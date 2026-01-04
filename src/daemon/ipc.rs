@@ -258,7 +258,7 @@ mod tests {
 
     fn create_test_socket_path() -> PathBuf {
         let dir = tempdir().unwrap();
-        dir.into_path().join("test.sock")
+        dir.keep().unwrap().join("test.sock")
     }
 
     fn create_test_engine() -> TestEngine {
