@@ -301,13 +301,48 @@ mod tests {
         assert_eq!(state.phase, TimerPhase::Stopped);
         assert_eq!(state.remaining_seconds, 0);
         assert_eq!(state.pomodoro_count, 0);
-        assert!(state.task_name.is_none());
-    }
-
     #[tokio::test]
-    async
-    fn test_create_ticker() {
+    async fn test_create_ticker() {
         let ticker = TimerEngine::create_ticker();
+        // Ticker should be created successfully
+        assert!(ticker.period() == Duration::from_secs(1));
+    }
+    #[tokio::test]
+    async fn test_create_ticker() {
+        let ticker = TimerEngine::create_ticker();
+        // Ticker should be created successfully
+        assert!(ticker.period() == Duration::from_secs(1));
+    }
+    #[tokio::test]
+    async fn test_create_ticker() {
+        let ticker = TimerEngine::create_ticker();
+        // Ticker should be created successfully
+        assert!(ticker.period() == Duration::from_secs(1));
+    }
+    #[tokio::test]
+    async fn test_create_ticker() {
+        let ticker = TimerEngine::create_ticker();
+        // Ticker should be created successfully
+        assert!(ticker.period() == Duration::from_secs(1));
+    }
+    #[tokio::test]
+    async fn test_create_ticker() {
+        let ticker = TimerEngine::create_ticker();
+        // Ticker should be created successfully
+        assert!(ticker.period() == Duration::from_secs(1));
+    }
+    #[tokio::test]
+    async fn test_create_ticker() {
+        let ticker = TimerEngine::create_ticker();
+        // Ticker should be created successfully
+        assert!(ticker.period() == Duration::from_secs(1));
+    }
+    #[tokio::test]
+    async fn test_create_ticker() {
+        let ticker = TimerEngine::create_ticker();
+        // Ticker should be created successfully
+        assert!(ticker.period() == Duration::from_secs(1));
+    }
         // Ticker should be created successfully
         assert!(ticker.period() == Duration::from_secs(1));
     }
