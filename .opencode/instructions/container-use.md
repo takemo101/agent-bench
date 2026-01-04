@@ -161,8 +161,29 @@ Work is complete when ALL conditions are met:
 - [ ] Build passes (verify with `environment_run_cmd`, if applicable)
 - [ ] Tests pass (if applicable)
 - [ ] Environment Info presented (format below)
-- [ ] PR merged and Issue closed
+- [ ] PR created
+- [ ] **CI passed** (MUST wait: `gh pr checks <PR番号> --watch`)
+- [ ] PR merged (only AFTER CI passes)
+- [ ] Issue closed
 - [ ] Environment deleted: `container-use delete <env_id>` (after PR merge)
+
+### PR Merge Flow (MANDATORY)
+
+```bash
+# 1. Create PR
+gh pr create --title "..." --body "..."
+
+# 2. Wait for CI to complete (NEVER skip this step)
+gh pr checks <PR番号> --watch
+
+# 3. Merge only after CI passes
+gh pr merge <PR番号> --squash --delete-branch
+
+# 4. Close related issue
+gh issue close <Issue番号>
+```
+
+**HARD BLOCK**: Never merge a PR without confirming CI success.
 
 ### Required Outputs
 
