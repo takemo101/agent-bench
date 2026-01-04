@@ -97,8 +97,8 @@ impl IpcClient {
             .context("Failed to read response")?;
 
         // レスポンスをデシリアライズ
-        let response: IpcResponse = serde_json::from_slice(&buffer[..n])
-            .context("Failed to deserialize response")?;
+        let response: IpcResponse =
+            serde_json::from_slice(&buffer[..n]).context("Failed to deserialize response")?;
 
         Ok(response)
     }
@@ -129,11 +129,11 @@ impl IpcClient {
                 Ok(response) => return Ok(response),
                 Err(e) => {
                     last_error = Some(e);
-                    
+
                     // 最後の試行でなければ待機
                     if attempt < max_retries {
                         sleep(Duration::from_millis(delay_ms)).await;
-                        
+
                         // 指数バックオフ（最大2秒）
                         delay_ms = (delay_ms * 2).min(MAX_RETRY_DELAY_MS);
                     }
@@ -192,10 +192,8 @@ fn get_socket_path() -> PathBuf {
     let home = std::env::var("HOME")
         .or_else(|_| std::env::var("USERPROFILE"))
         .unwrap_or_else(|_| ".".to_string());
-    
-    PathBuf::from(home)
-        .join(".pomodoro")
-        .join("pomodoro.sock")
+
+    PathBuf::from(home).join(".pomodoro").join("pomodoro.sock")
 }
 
 // ============================================================================
@@ -223,11 +221,11 @@ mod tests {
     /// モックサーバーがリクエストを受信してレスポンスを返す
     async fn mock_server_respond(listener: UnixListener, response: IpcResponse) {
         let (mut stream, _) = listener.accept().await.unwrap();
-        
+
         // リクエストを読み取る（検証はしない）
         let mut buffer = vec![0u8; REQUEST_BUFFER_SIZE];
         let _ = stream.read(&mut buffer).await.unwrap();
-        
+
         // レスポンスを返す
         let response_json = serde_json::to_string(&response).unwrap();
         stream.write_all(response_json.as_bytes()).await.unwrap();
@@ -256,7 +254,7 @@ mod tests {
     async fn test_send_request_success() {
         let temp_dir = TempDir::new().unwrap();
         let socket_path = temp_dir.path().join("test.sock");
-        
+
         let listener = start_mock_server(&socket_path).await;
         let client = IpcClient::with_socket_path(socket_path.clone());
 
@@ -266,9 +264,9 @@ mod tests {
 
         // リクエストを送信
         let result = client.send_request(IpcRequest::Status).await;
-        
+
         server_handle.await.unwrap();
-        
+
         assert!(result.is_ok());
         let resp = result.unwrap();
         assert_eq!(resp.status, "success");
@@ -279,7 +277,7 @@ mod tests {
     async fn test_send_request_timeout() {
         let temp_dir = TempDir::new().unwrap();
         let socket_path = temp_dir.path().join("test_timeout.sock");
-        
+
         let listener = start_mock_server(&socket_path).await;
         let client = IpcClient::with_socket_path(socket_path.clone());
 
@@ -292,11 +290,11 @@ mod tests {
 
         // リクエストを送信（タイムアウトするはず）
         let result = client.send_request(IpcRequest::Status).await;
-        
+
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
         assert!(err_msg.contains("timeout") || err_msg.contains("timed out"));
-        
+
         server_handle.abort();
     }
 
@@ -304,12 +302,12 @@ mod tests {
     async fn test_send_request_connection_refused() {
         let temp_dir = TempDir::new().unwrap();
         let socket_path = temp_dir.path().join("nonexistent.sock");
-        
+
         let client = IpcClient::with_socket_path(socket_path);
 
         // 存在しないソケットに接続を試みる
         let result = client.send_request(IpcRequest::Status).await;
-        
+
         assert!(result.is_err());
     }
 
@@ -317,7 +315,7 @@ mod tests {
     async fn test_send_request_with_retry_success_first_try() {
         let temp_dir = TempDir::new().unwrap();
         let socket_path = temp_dir.path().join("test_retry.sock");
-        
+
         let listener = start_mock_server(&socket_path).await;
         let client = IpcClient::with_socket_path(socket_path.clone());
 
@@ -326,9 +324,9 @@ mod tests {
 
         // リトライ付きリクエストを送信（1回目で成功するはず）
         let result = client.send_request_with_retry(IpcRequest::Status, 3).await;
-        
+
         server_handle.await.unwrap();
-        
+
         assert!(result.is_ok());
         let resp = result.unwrap();
         assert_eq!(resp.status, "success");
@@ -338,7 +336,7 @@ mod tests {
     async fn test_start_command() {
         let temp_dir = TempDir::new().unwrap();
         let socket_path = temp_dir.path().join("test_start.sock");
-        
+
         let listener = start_mock_server(&socket_path).await;
         let client = IpcClient::with_socket_path(socket_path.clone());
 
@@ -356,9 +354,9 @@ mod tests {
         };
 
         let result = client.start(args).await;
-        
+
         server_handle.await.unwrap();
-        
+
         assert!(result.is_ok());
     }
 
@@ -366,7 +364,7 @@ mod tests {
     async fn test_pause_command() {
         let temp_dir = TempDir::new().unwrap();
         let socket_path = temp_dir.path().join("test_pause.sock");
-        
+
         let listener = start_mock_server(&socket_path).await;
         let client = IpcClient::with_socket_path(socket_path.clone());
 
@@ -374,9 +372,9 @@ mod tests {
         let server_handle = tokio::spawn(mock_server_respond(listener, response.clone()));
 
         let result = client.pause().await;
-        
+
         server_handle.await.unwrap();
-        
+
         assert!(result.is_ok());
     }
 
@@ -384,7 +382,7 @@ mod tests {
     async fn test_resume_command() {
         let temp_dir = TempDir::new().unwrap();
         let socket_path = temp_dir.path().join("test_resume.sock");
-        
+
         let listener = start_mock_server(&socket_path).await;
         let client = IpcClient::with_socket_path(socket_path.clone());
 
@@ -392,9 +390,9 @@ mod tests {
         let server_handle = tokio::spawn(mock_server_respond(listener, response.clone()));
 
         let result = client.resume().await;
-        
+
         server_handle.await.unwrap();
-        
+
         assert!(result.is_ok());
     }
 
@@ -402,7 +400,7 @@ mod tests {
     async fn test_stop_command() {
         let temp_dir = TempDir::new().unwrap();
         let socket_path = temp_dir.path().join("test_stop.sock");
-        
+
         let listener = start_mock_server(&socket_path).await;
         let client = IpcClient::with_socket_path(socket_path.clone());
 
@@ -410,9 +408,9 @@ mod tests {
         let server_handle = tokio::spawn(mock_server_respond(listener, response.clone()));
 
         let result = client.stop().await;
-        
+
         server_handle.await.unwrap();
-        
+
         assert!(result.is_ok());
     }
 
@@ -420,7 +418,7 @@ mod tests {
     async fn test_status_command() {
         let temp_dir = TempDir::new().unwrap();
         let socket_path = temp_dir.path().join("test_status.sock");
-        
+
         let listener = start_mock_server(&socket_path).await;
         let client = IpcClient::with_socket_path(socket_path.clone());
 
@@ -436,9 +434,9 @@ mod tests {
         let server_handle = tokio::spawn(mock_server_respond(listener, response.clone()));
 
         let result = client.status().await;
-        
+
         server_handle.await.unwrap();
-        
+
         assert!(result.is_ok());
         let resp = result.unwrap();
         assert!(resp.data.is_some());
