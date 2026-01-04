@@ -182,7 +182,7 @@ mod tests {
         let plist =
             PomodoroLaunchAgent::new("/usr/local/bin/pomodoro", "/Users/test/.pomodoro/logs");
 
-        assert_eq!(plist.label, "com.example.pomodoro");
+        assert_eq!(plist.label, "com.github.takemo101.pomodoro");
         assert_eq!(
             plist.program_arguments,
             vec!["/usr/local/bin/pomodoro", "daemon"]
