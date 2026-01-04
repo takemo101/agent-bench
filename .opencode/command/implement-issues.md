@@ -362,23 +362,284 @@ Issue番号を指定します。複数指定可能。
 
 | 形式 | 例 | 処理方法 |
 |------|-----|---------|
-| 単一Issue | `/implement-issues 123` | 順次処理 |
+| 単一Issue | `/implement-issues 123` | 順次処理 **または** Subtask並列処理（自動検出） |
 | 複数Issue（スペース区切り） | `/implement-issues 9 10` | **並列処理** |
 | 複数Issue（カンマ区切り） | `/implement-issues 9,10,11` | **並列処理** |
 | 範囲指定 | `/implement-issues 9-12` | **並列処理** (9,10,11,12) |
+| 親Issue | `/implement-issues 8` | **Subtask自動検出 → 並列処理** |
 
 ### 引数パース処理
 
 | 入力 | 出力 | 説明 |
 |------|------|------|
-| `123` | `[123]` | 単一Issue |
+| `123` | `[123]` | 単一Issue（Subtaskあれば展開） |
 | `9 10` | `[9, 10]` | スペース区切り |
 | `9,10,11` | `[9, 10, 11]` | カンマ区切り |
 | `9-12` | `[9, 10, 11, 12]` | 範囲指定 |
 
+### 🔄 親Issue → Subtask自動検出（重要）
+
+> **単一Issue指定時は、必ずSubtaskの有無を確認すること。**
+
+```python
+def resolve_issues(issue_ids: list[int]) -> list[int]:
+    """
+    Issue番号リストを解決し、必要に応じてSubtaskを展開する
+    
+    - 単一Issue: Subtaskがあれば展開、なければそのまま
+    - 複数Issue: そのまま使用（展開しない）
+    """
+    if len(issue_ids) == 1:
+        parent_id = issue_ids[0]
+        subtasks = detect_subtasks(parent_id)
+        
+        if subtasks:
+            report_to_user(f"""
+📋 親Issue #{parent_id} から {len(subtasks)}件のSubtaskを検出しました。
+
+| Subtask | タイトル |
+|---------|---------|
+{format_subtask_table(subtasks)}
+
+これらを並列実装します。
+""")
+            return subtasks
+        else:
+            # Subtaskなし → 単体実装
+            return issue_ids
+    else:
+        # 複数指定 → そのまま使用
+        return issue_ids
+```
+
+#### Subtask検出ロジック
+
+```python
+def detect_subtasks(parent_issue_id: int) -> list[int]:
+    """
+    親IssueからSubtaskを検出する
+    
+    検出パターン（優先順）:
+    1. Issue bodyの "- [ ] #N" チェックリスト形式
+    2. Issue bodyの "Subtask of #N" 逆参照（子→親）
+    3. Issue commentsの Subtask作成記録
+    
+    Note: GitHub Sub-issues API (trackedInIssues) は gh CLI では取得不可のため使用しない
+    """
+    
+    # Issue情報を取得
+    result = bash(f"gh issue view {parent_issue_id} --json body,comments,number,title")
+    if not result or result.exit_code != 0:
+        report_to_user(f"⚠️ Issue #{parent_issue_id} の取得に失敗しました")
+        return []
+    
+    issue_data = json.loads(result.stdout)
+    subtask_ids = []
+    
+    # 1. Issue body からチェックリスト形式を検出
+    # パターン: "- [ ] #123" or "- [x] #123" or "- #123"
+    body = issue_data.get("body", "") or ""
+    checkbox_patterns = [
+        r"- \[[ x]\] #(\d+)",      # チェックボックス形式
+        r"- #(\d+)",                # シンプルなリスト形式
+        r"\* #(\d+)",               # アスタリスク形式
+    ]
+    for pattern in checkbox_patterns:
+        matches = re.findall(pattern, body)
+        subtask_ids.extend([int(m) for m in matches])
+    
+    if subtask_ids:
+        return list(set(subtask_ids))
+    
+    # 2. Comments から Subtask作成記録を検出
+    # /decompose-issue が作成するコメント形式を検出
+    comments = issue_data.get("comments", []) or []
+    for comment in comments:
+        comment_body = comment.get("body", "") or ""
+        
+        # 検出パターン: "Created subtask #N", "Subtask #N", "Sub-issue #N"
+        if any(kw in comment_body for kw in ["Subtask", "subtask", "Sub-issue", "Created #"]):
+            matches = re.findall(r"#(\d+)", comment_body)
+            # 親Issue自身を除外
+            subtask_ids.extend([
+                int(m) for m in matches 
+                if int(m) != parent_issue_id
+            ])
+    
+    # 3. 逆参照検索（子Issueが "Subtask of #N" を持つ場合）
+    if not subtask_ids:
+        # リポジトリ内のOpen Issueを検索
+        search_result = bash(f'''
+            gh issue list --state all --limit 100 --json number,body \
+            | jq '[.[] | select(.body != null) | select(.body | test("Subtask of #{parent_issue_id}|Parent: #{parent_issue_id}")) | .number]'
+        ''')
+        if search_result.exit_code == 0 and search_result.stdout.strip():
+            try:
+                found_ids = json.loads(search_result.stdout)
+                subtask_ids.extend(found_ids)
+            except json.JSONDecodeError:
+                pass
+    
+    return list(set(subtask_ids))  # 重複排除
+```
+
+#### 検出失敗時のフォールバック
+
+```python
+def detect_subtasks_with_fallback(parent_issue_id: int) -> tuple[list[int], str]:
+    """
+    Subtask検出（検出方法も返す）
+    
+    Returns:
+        (subtask_ids, detection_method)
+    """
+    subtasks = detect_subtasks(parent_issue_id)
+    
+    if subtasks:
+        return (subtasks, "auto_detected")
+    
+    # 検出できなかった場合、ユーザーに確認
+    # Issue自体がSubtaskを持つ設計かどうか不明なため
+    return ([], "none_found")
+```
+
+#### 検出結果に応じた処理フロー
+
+| 検出結果 | 処理 |
+|---------|------|
+| Subtask検出（N件） | 依存関係チェック → 並列/順次実装 |
+| Subtaskなし + 200行以下 | 単体実装 |
+| Subtaskなし + 200行超 | `/decompose-issue` を案内 |
+
+#### Subtask依存関係チェック（並列実行前に必須）
+
+> **⚠️ 重要**: Subtask間に依存関係がある場合、並列実行すると失敗する可能性がある。
+> 必ず依存関係をチェックし、依存がある場合は順序付けて実行すること。
+
+```python
+def check_subtask_dependencies(subtask_ids: list[int]) -> list[list[int]]:
+    """
+    Subtask間の依存関係をチェックし、実行グループに分割
+    
+    Returns:
+        実行グループのリスト（各グループ内は並列実行可能）
+        例: [[9, 10], [11]]  # 9,10を並列実行 → 完了後に11を実行
+    """
+    dependencies = {}  # {issue_id: [depends_on_ids]}
+    
+    for issue_id in subtask_ids:
+        result = bash(f"gh issue view {issue_id} --json body,title")
+        issue_data = json.loads(result.stdout)
+        body = issue_data.get("body", "") or ""
+        
+        # 依存関係パターンを検出
+        # "Depends on #N", "Blocked by #N", "After #N", "Requires #N"
+        dep_patterns = [
+            r"[Dd]epends on #(\d+)",
+            r"[Bb]locked by #(\d+)",
+            r"[Aa]fter #(\d+)",
+            r"[Rr]equires #(\d+)",
+        ]
+        
+        deps = []
+        for pattern in dep_patterns:
+            matches = re.findall(pattern, body)
+            deps.extend([int(m) for m in matches if int(m) in subtask_ids])
+        
+        dependencies[issue_id] = list(set(deps))
+    
+    # トポロジカルソートで実行順序を決定
+    return topological_sort_groups(subtask_ids, dependencies)
+
+def topological_sort_groups(ids: list[int], deps: dict[int, list[int]]) -> list[list[int]]:
+    """
+    依存関係を考慮してグループ分け
+    
+    例:
+    - #9: 依存なし
+    - #10: 依存なし
+    - #11: #9に依存
+    
+    結果: [[9, 10], [11]]
+    """
+    # 入次数を計算
+    in_degree = {id: 0 for id in ids}
+    for id, dep_list in deps.items():
+        for dep in dep_list:
+            if dep in in_degree:
+                in_degree[id] += 1
+    
+    groups = []
+    remaining = set(ids)
+    
+    while remaining:
+        # 入次数0のノードを現在のグループに
+        current_group = [id for id in remaining if in_degree.get(id, 0) == 0]
+        
+        if not current_group:
+            # 循環依存を検出
+            raise ValueError(f"循環依存を検出: {remaining}")
+        
+        groups.append(current_group)
+        
+        # 処理済みノードを除外し、依存先の入次数を減らす
+        for id in current_group:
+            remaining.remove(id)
+            for other_id in remaining:
+                if id in deps.get(other_id, []):
+                    in_degree[other_id] -= 1
+    
+    return groups
+```
+
+#### 依存関係に応じた実行フロー
+
+```python
+def implement_subtasks_with_deps(parent_id: int, subtask_ids: list[int]):
+    """依存関係を考慮したSubtask実装"""
+    
+    # 依存関係をチェック
+    execution_groups = check_subtask_dependencies(subtask_ids)
+    
+    if len(execution_groups) == 1:
+        # 依存関係なし → 全て並列実行
+        report_to_user(f"📋 {len(subtask_ids)}件のSubtaskを並列実装します")
+        parallel_implement(execution_groups[0])
+    else:
+        # 依存関係あり → グループごとに順次実行
+        report_to_user(f"""
+📋 {len(subtask_ids)}件のSubtaskを依存関係に従って実装します
+
+| グループ | Subtask | 依存先 |
+|---------|---------|--------|
+{format_dependency_table(execution_groups)}
+
+依存関係があるため、グループ単位で順次実行します。
+""")
+        
+        for i, group in enumerate(execution_groups):
+            report_to_user(f"🔄 グループ {i+1}/{len(execution_groups)} を実行中...")
+            results = parallel_implement(group)
+            
+            # グループ内で失敗があれば中断
+            if any(r['status'] == 'failed' for r in results):
+                report_to_user("⚠️ 依存元の実装に失敗。後続グループをスキップします")
+                break
+```
+
+| 依存パターン | 検出キーワード |
+|-------------|---------------|
+| 明示的依存 | `Depends on #N`, `Blocked by #N` |
+| 順序指定 | `After #N`, `Requires #N` |
+| 暗黙的依存 | （検出不可 → 失敗時に報告） |
+
 ## ワークフロー概要
 
 <!-- [DIAGRAM-FOR-HUMANS] 全体ワークフロー図（AI処理時はスキップ）
+単一Issue指定 → Subtask検出 → [Subtaskあり] → 並列実装
+                           → [Subtaskなし] → 粒度チェック → [200行超] → /decompose-issue
+                                                        → [200行以下] → 単体実装
+
 Issue（200行以下） → ブランチ作成 → container-use環境 → TDD → レビュー → PR作成 → CI → マージ
 → 全Subtask完了 → Parent Issue Close
 -->
@@ -405,6 +666,90 @@ Issue（200行以下） → ブランチ作成 → container-use環境 → TDD �
 | **責務** | 単一責務（1つの機能・1つの目的） |
 | **テスト可能性** | 独立してテスト可能 |
 | **所要時間目安** | 10-15分で実装完了 |
+
+### コード行数の見積もり方法
+
+```python
+def estimate_code_lines(issue_id: int) -> int:
+    """
+    Issueの実装コード行数を見積もる
+    
+    見積もり方法（優先順）:
+    1. Issue labelsから推定（推奨）
+    2. 設計書から推定
+    3. Issueタイトル・本文から推定
+    """
+    
+    # 1. Labelsから推定（最も信頼性が高い）
+    result = bash(f"gh issue view {issue_id} --json labels")
+    labels = json.loads(result.stdout).get("labels", [])
+    label_names = [l["name"] for l in labels]
+    
+    # サイズラベルがあれば使用
+    size_map = {
+        "size/xs": 50,      # ~50行
+        "size/s": 100,      # ~100行
+        "size/m": 200,      # ~200行（境界）
+        "size/l": 400,      # ~400行（要分割）
+        "size/xl": 800,     # ~800行（要分割）
+    }
+    for label, lines in size_map.items():
+        if label in label_names:
+            return lines
+    
+    # 2. 設計書から推定
+    design_doc = find_related_design_doc(issue_id)
+    if design_doc:
+        # 設計書のコードブロック行数をカウント
+        code_blocks = extract_code_blocks(design_doc)
+        estimated = sum(len(block.split('\n')) for block in code_blocks)
+        if estimated > 0:
+            return estimated * 1.5  # バッファ込み
+    
+    # 3. Issue本文から推定（フォールバック）
+    result = bash(f"gh issue view {issue_id} --json body,title")
+    issue_data = json.loads(result.stdout)
+    
+    # キーワードベースの推定
+    body = (issue_data.get("body") or "").lower()
+    title = (issue_data.get("title") or "").lower()
+    
+    # 複雑さ指標
+    complexity_keywords = {
+        "refactor": 150,
+        "add": 100,
+        "fix": 50,
+        "update": 80,
+        "implement": 200,
+        "create": 150,
+    }
+    
+    for keyword, lines in complexity_keywords.items():
+        if keyword in title or keyword in body:
+            return lines
+    
+    # デフォルト: 不明な場合は150行と仮定
+    return 150
+
+def should_decompose(issue_id: int) -> bool:
+    """分割が必要かどうか判定"""
+    estimated = estimate_code_lines(issue_id)
+    return estimated > 200
+```
+
+#### サイズラベルの推奨
+
+プロジェクトで以下のラベルを使用することを推奨:
+
+| ラベル | 目安行数 | 対応 |
+|--------|---------|------|
+| `size/xs` | ~50行 | 直接実装 |
+| `size/s` | ~100行 | 直接実装 |
+| `size/m` | ~200行 | 直接実装（境界） |
+| `size/l` | ~400行 | **要分割** |
+| `size/xl` | ~800行以上 | **要分割** |
+
+> **Tip**: `/decompose-issue` 実行時にサイズラベルを自動付与すると、見積もり精度が向上する。
 
 ### 大きなIssueを見つけた場合
 
@@ -433,11 +778,81 @@ Issue着手時に、まず**featureブランチを作成**します。
 > **⚠️ 重要**: container-use環境が作成する `cu-*` ブランチを直接PRに使用してはいけません。
 > 必ずfeatureブランチを作成し、そのブランチで作業を行ってください。
 
+#### 責任者: Sisyphus（親エージェント）
+
+> **⛔ 絶対ルール**: ブランチ作成は**必ずSisyphus**が行う。container-workerはブランチを作成しない。
+
+| 処理 | 実行者 | 理由 |
+|------|--------|------|
+| ブランチ作成 | **Sisyphus** | ホスト環境でのgit操作 |
+| container-use環境作成 | container-worker | 作成済みブランチを`from_git_ref`で指定 |
+
+#### 単体実装時
+
 ```python
-# ホスト側でブランチ作成 (bashツール使用)
+# Sisyphus がホスト側でブランチ作成 (bashツール使用)
 bash("git checkout main && git pull origin main")
 bash(f"git checkout -b feature/issue-{issue_id}-{short_description}")
 bash(f"git push -u origin feature/issue-{issue_id}-{short_description}")
+
+# その後 container-worker を起動
+background_task(
+    agent="container-worker",
+    prompt=f"""
+    ## ブランチ情報（Sisyphusが作成済み）
+    - ブランチ名: feature/issue-{issue_id}-{short_description}
+    - from_git_ref でこのブランチを指定してcontainer-use環境を作成すること
+    ...
+    """
+)
+```
+
+#### 並列実装時（複数Issue）
+
+```python
+def prepare_branches_for_parallel(issue_ids: list[int]) -> dict[int, str]:
+    """
+    Sisyphusが全Issueのブランチを事前に作成
+    
+    Returns:
+        {issue_id: branch_name} のマッピング
+    """
+    branches = {}
+    
+    # mainを最新化（1回だけ）
+    bash("git checkout main && git pull origin main")
+    
+    for issue_id in issue_ids:
+        issue = fetch_github_issue(issue_id)
+        short_desc = slugify(issue.title)[:30]
+        branch_name = f"feature/issue-{issue_id}-{short_desc}"
+        
+        # ブランチ作成 & プッシュ
+        bash(f"git checkout main")  # 毎回mainから分岐
+        bash(f"git checkout -b {branch_name}")
+        bash(f"git push -u origin {branch_name}")
+        
+        branches[issue_id] = branch_name
+    
+    # mainに戻る
+    bash("git checkout main")
+    
+    return branches
+
+# 使用例
+branches = prepare_branches_for_parallel([9, 10, 11])
+
+# 各container-workerにブランチ名を渡す
+for issue_id, branch_name in branches.items():
+    background_task(
+        agent="container-worker",
+        prompt=f"""
+        ## ブランチ情報（Sisyphusが作成済み）
+        - ブランチ名: {branch_name}
+        - ⚠️ 新規ブランチを作成しないこと（既存を使用）
+        ...
+        """
+    )
 ```
 
 **ブランチ命名規則**:
@@ -451,6 +866,7 @@ bash(f"git push -u origin feature/issue-{issue_id}-{short_description}")
 | ❌ 禁止 | ✅ 正しい方法 |
 |--------|-------------|
 | `cu-*` ブランチから直接PRを作成 | featureブランチからPRを作成 |
+| container-workerがブランチを作成 | Sisyphusが事前にブランチを作成 |
 | ブランチ作成をスキップしてcontainer-use環境を開始 | 先にfeatureブランチを作成してからcontainer-use環境を作成 |
 | ホスト環境で `edit`/`write` ツールを使ってコード編集 | `container-use_environment_file_write` を使用 |
 | ホスト環境で `bash` ツールを使ってテスト実行 | `container-use_environment_run_cmd` を使用 |
@@ -1106,23 +1522,34 @@ def cleanup_environment(env_id: str, pr_number: int) -> bool:
 def check_all_subtasks_complete(parent_issue_id: int) -> bool:
     """親Issueに紐づく全Subtaskが完了したかチェック"""
     
-    # 親Issueのコメントから作成されたSubtask IDを取得
-    comments = bash(f"gh issue view {parent_issue_id} --json comments")
-    subtask_ids = extract_subtask_ids_from_comments(comments)
+    # detect_subtasks() を再利用（重複ロジック回避）
+    # ※ detect_subtasks() は「引数」セクションで定義済み
+    subtask_ids = detect_subtasks(parent_issue_id)
+    
+    if not subtask_ids:
+        # Subtaskがない場合は親Issue自体の完了をチェック
+        return True
     
     # 各SubtaskのステータスとPRマージ状況を確認
     for subtask_id in subtask_ids:
-        subtask = bash(f"gh issue view {subtask_id} --json state,title")
-        if subtask.state != "CLOSED":
+        result = bash(f"gh issue view {subtask_id} --json state")
+        if result.exit_code != 0:
+            continue
+        
+        issue_data = json.loads(result.stdout)
+        if issue_data.get("state") != "CLOSED":
             return False
         
         # 関連PRがマージされているか確認
-        pr = bash(f"gh pr list --search 'closes #{subtask_id}' --state merged")
-        if not pr:
+        pr_result = bash(f"gh pr list --search 'closes #{subtask_id}' --state merged --json number")
+        if pr_result.exit_code != 0 or not json.loads(pr_result.stdout):
             return False
     
     return True
 ```
+
+> **Note**: `detect_subtasks()` は「引数」セクションで定義されている共通関数。
+> Subtask検出ロジックの重複を避けるため、必ずこの関数を再利用すること。
 
 #### 12.2 親Issueクローズ処理
 
@@ -1220,14 +1647,53 @@ def post_pr_workflow_parallel(pr_results: list[dict]):
 
 ## エラーハンドリング
 
+### GitHub API エラー
+
+| 状況 | 対応 |
+|------|------|
+| Issue不存在（404） | エラーメッセージを表示し、Issue番号の確認を依頼 |
+| レート制限（403） | 1分待機後にリトライ（最大3回） |
+| ネットワークエラー | 30秒待機後にリトライ（最大3回） |
+| 認証エラー（401） | `gh auth login` の実行を案内 |
+
+```python
+def safe_gh_api_call(command: str, max_retries: int = 3) -> tuple[bool, str]:
+    """GitHub API呼び出しのラッパー（リトライ付き）"""
+    for attempt in range(max_retries):
+        result = bash(command)
+        
+        if result.exit_code == 0:
+            return (True, result.stdout)
+        
+        error = result.stderr.lower()
+        
+        if "404" in error or "not found" in error:
+            return (False, f"Issue/PRが見つかりません: {command}")
+        
+        if "401" in error or "authentication" in error:
+            return (False, "認証エラー: `gh auth login` を実行してください")
+        
+        if "403" in error or "rate limit" in error:
+            wait(60)  # レート制限: 1分待機
+            continue
+        
+        # その他のエラー: リトライ
+        wait(30)
+    
+    return (False, f"APIエラー（{max_retries}回リトライ後）: {command}")
+```
+
 ### 単一Issue処理時
 
 | 状況 | 対応 |
 |------|------|
+| Issue不存在 | エラー報告して終了 |
+| Subtask検出失敗 | ユーザーに確認（続行 or 中断） |
 | 3回連続レビュー失敗 | Draft PRを作成して終了 |
 | 設計不備 | `/request-design-fix` を実行 |
 | 環境構築失敗 | `container-use_environment_config` で設定見直し |
 | サービス接続失敗 | ポート・環境変数を確認 |
+| ブランチ作成失敗 | 既存ブランチの有無を確認、競合解消 |
 
 ### 並列処理時
 
@@ -1237,6 +1703,17 @@ def post_pr_workflow_parallel(pr_results: list[dict]):
 | 全Issueが失敗 | 各失敗理由を収集して報告 |
 | container-worker タイムアウト | タイムアウトしたIssueをリストアップ |
 | 依存関係エラー | 依存元Issueを先に処理するよう順序変更 |
+| 循環依存検出 | エラー報告し、手動での依存解消を依頼 |
+| ブランチ競合 | 競合したIssueのみ報告、他は継続 |
+
+### Subtask検出時のエラー
+
+| 状況 | 対応 |
+|------|------|
+| 親Issue不存在 | エラー報告して終了 |
+| Subtask 0件検出 | 粒度チェックへ移行（正常フロー） |
+| 一部Subtaskがクローズ済み | 未完了分のみ実装対象に |
+| Subtask循環参照 | エラー報告、手動確認を依頼 |
 
 ### 並列処理の結果報告フォーマット
 
@@ -1266,16 +1743,88 @@ def post_pr_workflow_parallel(pr_results: list[dict]):
 ```
 1. Issue受領
      ↓
-2. 粒度チェック（200行以下か?）
+2. 【単一Issue指定時】Subtask自動検出 ★重要★
+     ├─ Subtaskあり → 並列実装へ（Step 4へ）
+     └─ Subtaskなし → 粒度チェックへ（Step 3へ）
+     ↓
+3. 粒度チェック（200行以下か?）
      ├─ No（大きい）→ `/decompose-issue` を実行してから再度呼び出し
      └─ Yes（適切）→ 実装開始
      ↓
-3. 各Issueを並列実行（container-worker）
+4. 各Issueを並列実行（container-worker）
      ↓
-4. CI監視 → マージ（各Issueごと）
+5. CI監視 → マージ（各Issueごと）
      ↓
-5. 全Issue完了 → 親Issue自動クローズ（該当する場合）
+6. 全Issue完了 → 親Issue自動クローズ（該当する場合）
 ```
+
+### ⚡ Subtask自動検出（単一Issue指定時は必須）
+
+```python
+# /implement-issues 8 のように単一Issue指定された場合
+def handle_single_issue(issue_id: int):
+    """単一Issue指定時のSubtask検出フロー"""
+    
+    # Step 1: Subtask検出
+    subtasks = detect_subtasks(issue_id)
+    
+    if subtasks:
+        # Step 2a: Subtaskあり → 並列実装
+        report_to_user(f"""
+📋 **親Issue #{issue_id} から {len(subtasks)}件のSubtaskを検出しました**
+
+Subtask: {', '.join(f'#{s}' for s in subtasks)}
+
+これらを並列実装します。
+""")
+        # background_task で並列起動
+        for subtask_id in subtasks:
+            background_task(
+                agent="container-worker",
+                description=f"Issue #{subtask_id} 実装",
+                prompt=build_worker_prompt(subtask_id)
+            )
+    else:
+        # Step 2b: Subtaskなし → 粒度チェック
+        if estimate_code_lines(issue_id) > 200:
+            report_to_user(f"""
+⚠️ Issue #{issue_id} は200行を超える見込みで、Subtaskも検出されませんでした。
+
+先に分解してください:
+```bash
+/decompose-issue {issue_id}
+```
+""")
+            return
+        
+        # 単体実装（container-workerを1つ起動）
+        implement_single_issue(issue_id)
+
+def implement_single_issue(issue_id: int):
+    """
+    単体Issue実装（Subtaskなし、200行以下の場合）
+    
+    ⚠️ 重要: 単体でも container-worker を使用する（一貫性のため）
+    """
+    # container-worker を1つ起動
+    background_task(
+        agent="container-worker",
+        description=f"Issue #{issue_id} 単体実装",
+        prompt=build_worker_prompt(issue_id)
+    )
+    
+    # 結果を待機
+    result = background_output(task_id="...")
+    
+    # CI監視 → マージ（Sisyphusが実行）
+    if result.get("pr_number"):
+        post_pr_workflow(result["pr_number"], result["env_id"])
+```
+
+> **Note**: 単体実装でも `container-worker` を使用する理由:
+> - container-use環境ルールの一貫性を保つ
+> - Sisyphusがホスト環境でファイル編集しない
+> - CI/マージ処理はSisyphusが担当（Phase 10-11）
 
 ### 粒度判定（実装開始前に必須）
 
@@ -1317,6 +1866,7 @@ if estimate_code_lines(issue) > 200:
 ### ⛔ 必須チェックリスト
 
 ```
+□ 【単一Issue指定時】Subtask検出を実行したか? ★最優先★
 □ Issue粒度チェック（200行以下か?）
 □ 大きい場合は `/decompose-issue` を案内したか?
 □ background_task を使用しているか?（⛔ task 禁止）
@@ -1339,6 +1889,8 @@ if estimate_code_lines(issue) > 200:
 
 | ❌ 間違い | ✅ 正しい方法 |
 |----------|-------------|
+| **単一Issue指定時にSubtask検出をスキップ** | **必ず `detect_subtasks()` を実行** |
+| 親IssueをそのままSubtaskなしで実装開始 | まずSubtask検出 → なければ粒度チェック |
 | 大きなIssueをそのまま実装 | `/decompose-issue` で分割してから実装 |
 | `task(subagent_type="container-worker", ...)` | `background_task(agent="container-worker", ...)` |
 | 結果を待たずに次へ進む | `background_output` で全結果を収集してから報告 |
