@@ -1,7 +1,7 @@
-use rodio::{OutputStream, OutputStreamHandle, Sink, Decoder};
-use std::io::Cursor;
+use super::{SoundError, SoundPlayer, SoundSource};
 use async_trait::async_trait;
-use super::{SoundPlayer, SoundSource, SoundError};
+use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink};
+use std::io::Cursor;
 use std::sync::mpsc;
 use std::thread;
 
@@ -15,7 +15,11 @@ pub struct RodioSoundPlayer {
 impl RodioSoundPlayer {
     pub fn new(disabled: bool) -> Result<Self, SoundError> {
         if disabled {
-             return Ok(Self { stream_handle: None, _keep_alive: None, disabled: true });
+            return Ok(Self {
+                stream_handle: None,
+                _keep_alive: None,
+                disabled: true,
+            });
         }
 
         let (tx_handle, rx_handle) = mpsc::channel();
@@ -47,7 +51,9 @@ impl RodioSoundPlayer {
                 disabled: false,
             }),
             Ok(Err(e)) => Err(e),
-            Err(_) => Err(SoundError::StreamError("Audio thread failed to initialize".to_string())),
+            Err(_) => Err(SoundError::StreamError(
+                "Audio thread failed to initialize".to_string(),
+            )),
         }
     }
 }
@@ -59,32 +65,27 @@ impl SoundPlayer for RodioSoundPlayer {
             return Ok(());
         }
 
-        let handle = self.stream_handle.as_ref().ok_or_else(|| 
+        let handle = self.stream_handle.as_ref().ok_or_else(|| {
             SoundError::DeviceNotAvailable("Output stream not initialized".to_string())
-        )?;
+        })?;
 
-        let sink = Sink::try_new(handle).map_err(|e| 
-            SoundError::StreamError(e.to_string())
-        )?;
+        let sink = Sink::try_new(handle).map_err(|e| SoundError::StreamError(e.to_string()))?;
 
         match source {
             SoundSource::System { path, .. } => {
-                let file = std::fs::File::open(path).map_err(|e| 
-                    SoundError::FileNotFound(e.to_string())
-                )?;
-                let decoder = Decoder::new(std::io::BufReader::new(file)).map_err(|e| 
-                    SoundError::DecodeError(e.to_string())
-                )?;
+                let file = std::fs::File::open(path)
+                    .map_err(|e| SoundError::FileNotFound(e.to_string()))?;
+                let decoder = Decoder::new(std::io::BufReader::new(file))
+                    .map_err(|e| SoundError::DecodeError(e.to_string()))?;
                 sink.append(decoder);
-            },
+            }
             SoundSource::Embedded { .. } => {
                 // Using embedded::DEFAULT_SOUND_DATA
                 // Note: If data is invalid (e.g. empty), Decoder::new will fail.
                 // We handle this gracefully.
                 let cursor = Cursor::new(super::DEFAULT_SOUND_DATA);
-                let decoder = Decoder::new(cursor).map_err(|e| 
-                    SoundError::DecodeError(e.to_string())
-                )?;
+                let decoder =
+                    Decoder::new(cursor).map_err(|e| SoundError::DecodeError(e.to_string()))?;
                 sink.append(decoder);
             }
         }

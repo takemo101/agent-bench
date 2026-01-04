@@ -1,12 +1,12 @@
 mod embedded;
 mod error;
-mod source;
 mod player;
+mod source;
 
 pub use embedded::DEFAULT_SOUND_DATA;
 pub use error::SoundError;
-pub use source::SoundSource;
 pub use player::RodioSoundPlayer;
+pub use source::SoundSource;
 
 use async_trait::async_trait;
 
@@ -25,14 +25,14 @@ pub fn create_sound_player(disabled: bool) -> Box<dyn SoundPlayer> {
             // ここでは簡易的にログを出して（できないが）、再度disabled=trueで呼ぶか、
             // RodioSoundPlayerがdisabled=trueなら必ず成功する前提で作る。
             // ひとまずnew(true)は必ずOkを返すように実装する想定で。
-             if let Ok(p) = RodioSoundPlayer::new(true) {
-                 Box::new(p)
-             } else {
-                 // ここには来ないはずだが、万が一の場合はpanicか...
-                 // エラー型を変えるわけにいかないので、Box<dyn SoundPlayer>を返す必要がある。
-                 // struct RodioSoundPlayerがOption<_stream>を持てばnew(true)は成功する。
-                 panic!("Failed to create disabled sound player");
-             }
+            if let Ok(p) = RodioSoundPlayer::new(true) {
+                Box::new(p)
+            } else {
+                // ここには来ないはずだが、万が一の場合はpanicか...
+                // エラー型を変えるわけにいかないので、Box<dyn SoundPlayer>を返す必要がある。
+                // struct RodioSoundPlayerがOption<_stream>を持てばnew(true)は成功する。
+                panic!("Failed to create disabled sound player");
+            }
         }
     }
 }

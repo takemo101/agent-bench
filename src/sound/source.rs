@@ -1,5 +1,5 @@
-use std::path::PathBuf;
 use std::fs;
+use std::path::PathBuf;
 
 /// サウンドの取得元を表す列挙型
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -45,15 +45,25 @@ impl SoundSource {
                 }
             }
         }
-        
+
         // 名前でソートして順序を安定させる
         sounds.sort_by(|a, b| {
             match (a, b) {
-                (SoundSource::System { name: a_name, .. }, SoundSource::System { name: b_name, .. }) => a_name.cmp(b_name),
+                (
+                    SoundSource::System { name: a_name, .. },
+                    SoundSource::System { name: b_name, .. },
+                ) => a_name.cmp(b_name),
                 // Embeddedはここには来ないはずだが、念のため
-                (SoundSource::System { .. }, SoundSource::Embedded { .. }) => std::cmp::Ordering::Less,
-                (SoundSource::Embedded { .. }, SoundSource::System { .. }) => std::cmp::Ordering::Greater,
-                (SoundSource::Embedded { name: a_name, .. }, SoundSource::Embedded { name: b_name, .. }) => a_name.cmp(b_name),
+                (SoundSource::System { .. }, SoundSource::Embedded { .. }) => {
+                    std::cmp::Ordering::Less
+                }
+                (SoundSource::Embedded { .. }, SoundSource::System { .. }) => {
+                    std::cmp::Ordering::Greater
+                }
+                (
+                    SoundSource::Embedded { name: a_name, .. },
+                    SoundSource::Embedded { name: b_name, .. },
+                ) => a_name.cmp(b_name),
             }
         });
 
@@ -66,16 +76,18 @@ impl SoundSource {
         let sounds = Self::discover_system_sounds();
 
         // Glassを探す
-        if let Some(sound) = sounds.iter().find(|s| {
-            matches!(s, SoundSource::System { name, .. } if name == "Glass")
-        }) {
+        if let Some(sound) = sounds
+            .iter()
+            .find(|s| matches!(s, SoundSource::System { name, .. } if name == "Glass"))
+        {
             return sound.clone();
         }
 
         // Pingを探す
-        if let Some(sound) = sounds.iter().find(|s| {
-            matches!(s, SoundSource::System { name, .. } if name == "Ping")
-        }) {
+        if let Some(sound) = sounds
+            .iter()
+            .find(|s| matches!(s, SoundSource::System { name, .. } if name == "Ping"))
+        {
             return sound.clone();
         }
 
