@@ -528,10 +528,7 @@ mod tests {
         assert!(result.unwrap()); // Returns true when running
 
         // Check remaining time decreased
-        assert_eq!(
-            engine.get_state().remaining_seconds,
-            initial_remaining - 1
-        );
+        assert_eq!(engine.get_state().remaining_seconds, initial_remaining - 1);
 
         // Check Tick event was sent
         let event = rx.try_recv().unwrap();
@@ -554,7 +551,12 @@ mod tests {
 
         // Check events: Tick, WorkCompleted, BreakStarted
         let tick = rx.try_recv().unwrap();
-        assert!(matches!(tick, TimerEvent::Tick { remaining_seconds: 0 }));
+        assert!(matches!(
+            tick,
+            TimerEvent::Tick {
+                remaining_seconds: 0
+            }
+        ));
 
         let work_completed = rx.try_recv().unwrap();
         assert!(matches!(work_completed, TimerEvent::WorkCompleted { .. }));
