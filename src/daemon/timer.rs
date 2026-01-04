@@ -265,8 +265,7 @@ mod tests {
     // TimerEvent Tests
     // ------------------------------------------------------------------------
 
-    #[tokio::test]
-    async
+    #[test]
     fn test_timer_event_equality() {
         let event1 = TimerEvent::WorkStarted {
             task_name: Some("タスク".to_string()),
@@ -277,8 +276,7 @@ mod tests {
         assert_eq!(event1, event2);
     }
 
-    #[tokio::test]
-    async
+    #[test]
     fn test_timer_event_debug() {
         let event = TimerEvent::Tick {
             remaining_seconds: 100,
@@ -292,8 +290,7 @@ mod tests {
     // TimerEngine Creation Tests
     // ------------------------------------------------------------------------
 
-    #[tokio::test]
-    async
+    #[test]
     fn test_timer_engine_new() {
         let (engine, _rx) = create_test_engine();
         let state = engine.get_state();
@@ -301,48 +298,12 @@ mod tests {
         assert_eq!(state.phase, TimerPhase::Stopped);
         assert_eq!(state.remaining_seconds, 0);
         assert_eq!(state.pomodoro_count, 0);
+        assert!(state.task_name.is_none());
+    }
+
     #[tokio::test]
     async fn test_create_ticker() {
         let ticker = TimerEngine::create_ticker();
-        // Ticker should be created successfully
-        assert!(ticker.period() == Duration::from_secs(1));
-    }
-    #[tokio::test]
-    async fn test_create_ticker() {
-        let ticker = TimerEngine::create_ticker();
-        // Ticker should be created successfully
-        assert!(ticker.period() == Duration::from_secs(1));
-    }
-    #[tokio::test]
-    async fn test_create_ticker() {
-        let ticker = TimerEngine::create_ticker();
-        // Ticker should be created successfully
-        assert!(ticker.period() == Duration::from_secs(1));
-    }
-    #[tokio::test]
-    async fn test_create_ticker() {
-        let ticker = TimerEngine::create_ticker();
-        // Ticker should be created successfully
-        assert!(ticker.period() == Duration::from_secs(1));
-    }
-    #[tokio::test]
-    async fn test_create_ticker() {
-        let ticker = TimerEngine::create_ticker();
-        // Ticker should be created successfully
-        assert!(ticker.period() == Duration::from_secs(1));
-    }
-    #[tokio::test]
-    async fn test_create_ticker() {
-        let ticker = TimerEngine::create_ticker();
-        // Ticker should be created successfully
-        assert!(ticker.period() == Duration::from_secs(1));
-    }
-    #[tokio::test]
-    async fn test_create_ticker() {
-        let ticker = TimerEngine::create_ticker();
-        // Ticker should be created successfully
-        assert!(ticker.period() == Duration::from_secs(1));
-    }
         // Ticker should be created successfully
         assert!(ticker.period() == Duration::from_secs(1));
     }
@@ -351,8 +312,7 @@ mod tests {
     // TimerEngine Start Tests
     // ------------------------------------------------------------------------
 
-    #[tokio::test]
-    async
+    #[test]
     fn test_timer_engine_start() {
         let (mut engine, mut rx) = create_test_engine();
 
@@ -374,8 +334,7 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async
+    #[test]
     fn test_timer_engine_start_without_task_name() {
         let (mut engine, mut rx) = create_test_engine();
 
@@ -390,8 +349,7 @@ mod tests {
         assert_eq!(event, TimerEvent::WorkStarted { task_name: None });
     }
 
-    #[tokio::test]
-    async
+    #[test]
     fn test_timer_engine_start_already_running() {
         let (mut engine, _rx) = create_test_engine();
 
@@ -409,8 +367,7 @@ mod tests {
     // TimerEngine Pause Tests
     // ------------------------------------------------------------------------
 
-    #[tokio::test]
-    async
+    #[test]
     fn test_timer_engine_pause() {
         let (mut engine, mut rx) = create_test_engine();
 
@@ -427,8 +384,7 @@ mod tests {
         assert_eq!(event, TimerEvent::Paused);
     }
 
-    #[tokio::test]
-    async
+    #[test]
     fn test_timer_engine_pause_not_running() {
         let (mut engine, _rx) = create_test_engine();
 
@@ -444,8 +400,7 @@ mod tests {
     // TimerEngine Resume Tests
     // ------------------------------------------------------------------------
 
-    #[tokio::test]
-    async
+    #[test]
     fn test_timer_engine_resume() {
         let (mut engine, mut rx) = create_test_engine();
 
@@ -464,8 +419,7 @@ mod tests {
         assert_eq!(event, TimerEvent::Resumed);
     }
 
-    #[tokio::test]
-    async
+    #[test]
     fn test_timer_engine_resume_not_paused() {
         let (mut engine, _rx) = create_test_engine();
 
@@ -483,8 +437,7 @@ mod tests {
     // TimerEngine Stop Tests
     // ------------------------------------------------------------------------
 
-    #[tokio::test]
-    async
+    #[test]
     fn test_timer_engine_stop() {
         let (mut engine, mut rx) = create_test_engine();
 
@@ -503,8 +456,7 @@ mod tests {
         assert_eq!(event, TimerEvent::Stopped);
     }
 
-    #[tokio::test]
-    async
+    #[test]
     fn test_timer_engine_stop_when_paused() {
         let (mut engine, mut rx) = create_test_engine();
 
@@ -523,8 +475,7 @@ mod tests {
         assert_eq!(event, TimerEvent::Stopped);
     }
 
-    #[tokio::test]
-    async
+    #[test]
     fn test_timer_engine_stop_not_running() {
         let (mut engine, _rx) = create_test_engine();
 
@@ -540,8 +491,7 @@ mod tests {
     // TimerEngine Process Tick Tests
     // ------------------------------------------------------------------------
 
-    #[tokio::test]
-    async
+    #[test]
     fn test_process_tick_when_stopped() {
         let (mut engine, _rx) = create_test_engine();
 
@@ -550,8 +500,7 @@ mod tests {
         assert!(!result.unwrap()); // Returns false when not running
     }
 
-    #[tokio::test]
-    async
+    #[test]
     fn test_process_tick_when_paused() {
         let (mut engine, mut rx) = create_test_engine();
 
@@ -565,8 +514,7 @@ mod tests {
         assert!(!result.unwrap()); // Returns false when paused
     }
 
-    #[tokio::test]
-    async
+    #[test]
     fn test_process_tick_when_running() {
         let (mut engine, mut rx) = create_test_engine();
 
@@ -580,15 +528,17 @@ mod tests {
         assert!(result.unwrap()); // Returns true when running
 
         // Check remaining time decreased
-        assert_eq!(engine.get_state().remaining_seconds, initial_remaining - 1);
+        assert_eq!(
+            engine.get_state().remaining_seconds,
+            initial_remaining - 1
+        );
 
         // Check Tick event was sent
         let event = rx.try_recv().unwrap();
         assert!(matches!(event, TimerEvent::Tick { .. }));
     }
 
-    #[tokio::test]
-    async
+    #[test]
     fn test_process_tick_triggers_completion() {
         let (mut engine, mut rx) = create_test_engine();
 
@@ -604,12 +554,7 @@ mod tests {
 
         // Check events: Tick, WorkCompleted, BreakStarted
         let tick = rx.try_recv().unwrap();
-        assert!(matches!(
-            tick,
-            TimerEvent::Tick {
-                remaining_seconds: 0
-            }
-        ));
+        assert!(matches!(tick, TimerEvent::Tick { remaining_seconds: 0 }));
 
         let work_completed = rx.try_recv().unwrap();
         assert!(matches!(work_completed, TimerEvent::WorkCompleted { .. }));
@@ -622,8 +567,7 @@ mod tests {
     // TimerEngine Complete Handler Tests
     // ------------------------------------------------------------------------
 
-    #[tokio::test]
-    async
+    #[test]
     fn test_handle_timer_complete_work_finished() {
         let (mut engine, mut rx) = create_test_engine();
 
@@ -663,8 +607,7 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async
+    #[test]
     fn test_handle_timer_complete_long_break_after_4_pomodoros() {
         let (mut engine, mut rx) = create_test_engine();
 
@@ -696,8 +639,7 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async
+    #[test]
     fn test_handle_timer_complete_break_finished_no_auto_cycle() {
         let (mut engine, mut rx) = create_test_engine();
 
@@ -724,8 +666,7 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async
+    #[test]
     fn test_handle_timer_complete_break_finished_with_auto_cycle() {
         let config = PomodoroConfig {
             auto_cycle: true,
@@ -766,8 +707,7 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async
+    #[test]
     fn test_handle_timer_complete_long_break_finished() {
         let (mut engine, mut rx) = create_test_engine();
 
@@ -794,8 +734,7 @@ mod tests {
     // Get State Tests
     // ------------------------------------------------------------------------
 
-    #[tokio::test]
-    async
+    #[test]
     fn test_get_state_returns_reference() {
         let (engine, _rx) = create_test_engine();
         let state = engine.get_state();
@@ -808,8 +747,7 @@ mod tests {
     // Integration-style Tests
     // ------------------------------------------------------------------------
 
-    #[tokio::test]
-    async
+    #[test]
     fn test_full_pomodoro_cycle_simulation() {
         let (mut engine, mut rx) = create_test_engine();
 
@@ -843,8 +781,7 @@ mod tests {
         assert_eq!(engine.get_state().phase, TimerPhase::Stopped);
     }
 
-    #[tokio::test]
-    async
+    #[test]
     fn test_pause_resume_preserves_remaining_time() {
         let (mut engine, mut rx) = create_test_engine();
 
@@ -865,8 +802,7 @@ mod tests {
         assert_eq!(engine.state.remaining_seconds, 1000);
     }
 
-    #[tokio::test]
-    async
+    #[test]
     fn test_multiple_pomodoro_cycles() {
         let config = PomodoroConfig {
             auto_cycle: true,
@@ -901,8 +837,7 @@ mod tests {
         assert_eq!(engine.state.pomodoro_count, 4);
     }
 
-    #[tokio::test]
-    async
+    #[test]
     fn test_interleaved_commands_and_ticks() {
         let (mut engine, mut rx) = create_test_engine();
 
