@@ -238,24 +238,36 @@ fn handle_status(engine: &TimerEngine) -> IpcResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::daemon::TimerEvent;
     use crate::types::PomodoroConfig;
     use std::path::PathBuf;
     use tempfile::tempdir;
     use tokio::sync::mpsc;
 
     // ------------------------------------------------------------------------
-    // Helper Functions
+    // Helper Types and Functions
     // ------------------------------------------------------------------------
+
+    /// テスト用エンジンとイベントレシーバーのペア
+    /// レシーバーを保持することでチャネルを生存させる
+    struct TestEngine {
+        engine: Arc<Mutex<TimerEngine>>,
+        #[allow(dead_code)]
+        event_rx: mpsc::UnboundedReceiver<TimerEvent>,
+    }
 
     fn create_test_socket_path() -> PathBuf {
         let dir = tempdir().unwrap();
         dir.into_path().join("test.sock")
     }
 
-    fn create_test_engine() -> Arc<Mutex<TimerEngine>> {
-        let (tx, _rx) = mpsc::unbounded_channel();
+    fn create_test_engine() -> TestEngine {
+        let (tx, rx) = mpsc::unbounded_channel();
         let config = PomodoroConfig::default();
-        Arc::new(Mutex::new(TimerEngine::new(config, tx)))
+        TestEngine {
+            engine: Arc::new(Mutex::new(TimerEngine::new(config, tx))),
+            event_rx: rx,
+        }
     }
 
     // ------------------------------------------------------------------------
@@ -452,9 +464,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_handle_request_status() {
-        let engine = create_test_engine();
+        let test_engine = create_test_engine();
 
-        let response = handle_request(IpcRequest::Status, engine).await;
+        let response = handle_request(IpcRequest::Status, test_engine.engine).await;
 
         assert_eq!(response.status, "success");
         assert!(response.data.is_some());
@@ -464,7 +476,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_handle_request_start() {
-        let engine = create_test_engine();
+        let test_engine = create_test_engine();
 
         let request = IpcRequest::Start {
             params: StartParams {
@@ -473,7 +485,7 @@ mod tests {
             },
         };
 
-        let response = handle_request(request, engine).await;
+        let response = handle_request(request, test_engine.engine).await;
 
         assert_eq!(response.status, "success");
         assert_eq!(response.message, "タイマーを開始しました");
@@ -485,7 +497,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_handle_request_start_already_running() {
-        let engine = create_test_engine();
+        let test_engine = create_test_engine();
+        let engine = test_engine.engine;
 
         // Start first
         let request = IpcRequest::Start {
@@ -505,7 +518,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_handle_request_pause() {
-        let engine = create_test_engine();
+        let test_engine = create_test_engine();
+        let engine = test_engine.engine;
 
         // Start first
         let start_request = IpcRequest::Start {
@@ -522,9 +536,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_handle_request_pause_not_running() {
-        let engine = create_test_engine();
+        let test_engine = create_test_engine();
 
-        let response = handle_request(IpcRequest::Pause, engine).await;
+        let response = handle_request(IpcRequest::Pause, test_engine.engine).await;
 
         assert_eq!(response.status, "error");
         assert!(response.message.contains("実行されていません"));
@@ -532,7 +546,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_handle_request_resume() {
-        let engine = create_test_engine();
+        let test_engine = create_test_engine();
+        let engine = test_engine.engine;
 
         // Start then pause
         let start_request = IpcRequest::Start {
@@ -550,7 +565,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_handle_request_resume_not_paused() {
-        let engine = create_test_engine();
+        let test_engine = create_test_engine();
+        let engine = test_engine.engine;
 
         // Start but don't pause
         let start_request = IpcRequest::Start {
@@ -566,7 +582,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_handle_request_stop() {
-        let engine = create_test_engine();
+        let test_engine = create_test_engine();
+        let engine = test_engine.engine;
 
         // Start first
         let start_request = IpcRequest::Start {
@@ -583,9 +600,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_handle_request_stop_not_running() {
-        let engine = create_test_engine();
+        let test_engine = create_test_engine();
 
-        let response = handle_request(IpcRequest::Stop, engine).await;
+        let response = handle_request(IpcRequest::Stop, test_engine.engine).await;
 
         assert_eq!(response.status, "error");
         assert!(response.message.contains("実行されていません"));
@@ -599,7 +616,7 @@ mod tests {
     async fn test_full_ipc_flow() {
         let socket_path = create_test_socket_path();
         let server = IpcServer::new(&socket_path).unwrap();
-        let engine = create_test_engine();
+        let test_engine = create_test_engine();
 
         // Client task
         let client_path = socket_path.clone();
@@ -621,7 +638,7 @@ mod tests {
         // Server handling
         let mut stream = server.accept().await.unwrap();
         let request = IpcServer::receive_request(&mut stream).await.unwrap();
-        let response = handle_request(request, engine).await;
+        let response = handle_request(request, test_engine.engine).await;
         IpcServer::send_response(&mut stream, &response)
             .await
             .unwrap();
@@ -636,7 +653,8 @@ mod tests {
     async fn test_multiple_sequential_requests() {
         let socket_path = create_test_socket_path();
         let server = IpcServer::new(&socket_path).unwrap();
-        let engine = create_test_engine();
+        let test_engine = create_test_engine();
+        let engine = test_engine.engine;
 
         // First request: start
         let client_path = socket_path.clone();
