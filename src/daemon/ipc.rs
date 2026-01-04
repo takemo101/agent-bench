@@ -50,19 +50,16 @@ impl IpcServer {
         // 親ディレクトリが存在することを確認
         if let Some(parent) = socket_path.parent() {
             if !parent.exists() {
-                std::fs::create_dir_all(parent)
-                    .context("Failed to create socket directory")?;
+                std::fs::create_dir_all(parent).context("Failed to create socket directory")?;
             }
         }
 
         // 既存のソケットファイルを削除
         if socket_path.exists() {
-            std::fs::remove_file(socket_path)
-                .context("Failed to remove existing socket file")?;
+            std::fs::remove_file(socket_path).context("Failed to remove existing socket file")?;
         }
 
-        let listener = UnixListener::bind(socket_path)
-            .context("Failed to bind Unix socket")?;
+        let listener = UnixListener::bind(socket_path).context("Failed to bind Unix socket")?;
 
         Ok(Self {
             listener,
@@ -78,7 +75,10 @@ impl IpcServer {
     ///
     /// 接続されたUnixStream
     pub async fn accept(&self) -> Result<UnixStream> {
-        let (stream, _) = self.listener.accept().await
+        let (stream, _) = self
+            .listener
+            .accept()
+            .await
             .context("Failed to accept connection")?;
         Ok(stream)
     }
@@ -110,8 +110,8 @@ impl IpcServer {
             anyhow::bail!("Connection closed by client");
         }
 
-        let request: IpcRequest = serde_json::from_slice(&buffer[..n])
-            .context("Failed to parse request JSON")?;
+        let request: IpcRequest =
+            serde_json::from_slice(&buffer[..n]).context("Failed to parse request JSON")?;
 
         Ok(request)
     }
@@ -125,14 +125,14 @@ impl IpcServer {
     /// * `stream` - クライアントストリーム
     /// * `response` - 送信するレスポンス
     pub async fn send_response(stream: &mut UnixStream, response: &IpcResponse) -> Result<()> {
-        let json = serde_json::to_vec(response)
-            .context("Failed to serialize response")?;
+        let json = serde_json::to_vec(response).context("Failed to serialize response")?;
 
-        stream.write_all(&json).await
+        stream
+            .write_all(&json)
+            .await
             .context("Failed to write to socket")?;
 
-        stream.flush().await
-            .context("Failed to flush socket")?;
+        stream.flush().await.context("Failed to flush socket")?;
 
         Ok(())
     }
@@ -162,10 +162,7 @@ impl Drop for IpcServer {
 /// # Returns
 ///
 /// 処理結果を含むIpcResponse
-pub async fn handle_request(
-    request: IpcRequest,
-    engine: Arc<Mutex<TimerEngine>>,
-) -> IpcResponse {
+pub async fn handle_request(request: IpcRequest, engine: Arc<Mutex<TimerEngine>>) -> IpcResponse {
     let mut engine = engine.lock().await;
 
     match request {
@@ -625,7 +622,9 @@ mod tests {
         let mut stream = server.accept().await.unwrap();
         let request = IpcServer::receive_request(&mut stream).await.unwrap();
         let response = handle_request(request, engine).await;
-        IpcServer::send_response(&mut stream, &response).await.unwrap();
+        IpcServer::send_response(&mut stream, &response)
+            .await
+            .unwrap();
 
         // Verify client received response
         let client_response = client_handle.await.unwrap();
@@ -644,7 +643,10 @@ mod tests {
         let client1 = tokio::spawn(async move {
             tokio::time::sleep(Duration::from_millis(50)).await;
             let mut stream = UnixStream::connect(&client_path).await.unwrap();
-            stream.write_all(r#"{"command":"start","taskName":"タスク1"}"#.as_bytes()).await.unwrap();
+            stream
+                .write_all(r#"{"command":"start","taskName":"タスク1"}"#.as_bytes())
+                .await
+                .unwrap();
             let mut buffer = vec![0u8; 4096];
             let n = stream.read(&mut buffer).await.unwrap();
             String::from_utf8(buffer[..n].to_vec()).unwrap()
@@ -653,7 +655,9 @@ mod tests {
         let mut stream1 = server.accept().await.unwrap();
         let request1 = IpcServer::receive_request(&mut stream1).await.unwrap();
         let response1 = handle_request(request1, engine.clone()).await;
-        IpcServer::send_response(&mut stream1, &response1).await.unwrap();
+        IpcServer::send_response(&mut stream1, &response1)
+            .await
+            .unwrap();
 
         let result1 = client1.await.unwrap();
         assert!(result1.contains("\"working\""));
@@ -663,7 +667,10 @@ mod tests {
         let client2 = tokio::spawn(async move {
             tokio::time::sleep(Duration::from_millis(50)).await;
             let mut stream = UnixStream::connect(&client_path).await.unwrap();
-            stream.write_all(r#"{"command":"status"}"#.as_bytes()).await.unwrap();
+            stream
+                .write_all(r#"{"command":"status"}"#.as_bytes())
+                .await
+                .unwrap();
             let mut buffer = vec![0u8; 4096];
             let n = stream.read(&mut buffer).await.unwrap();
             String::from_utf8(buffer[..n].to_vec()).unwrap()
@@ -672,7 +679,9 @@ mod tests {
         let mut stream2 = server.accept().await.unwrap();
         let request2 = IpcServer::receive_request(&mut stream2).await.unwrap();
         let response2 = handle_request(request2, engine).await;
-        IpcServer::send_response(&mut stream2, &response2).await.unwrap();
+        IpcServer::send_response(&mut stream2, &response2)
+            .await
+            .unwrap();
 
         let result2 = client2.await.unwrap();
         assert!(result2.contains("\"working\""));
