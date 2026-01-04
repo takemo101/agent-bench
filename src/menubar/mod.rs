@@ -23,6 +23,12 @@ pub struct TrayIconManager {
     _tray_icon: Option<TrayIcon>,
 }
 
+impl Default for TrayIconManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TrayIconManager {
     pub fn new() -> Self {
         unimplemented!("TrayIconManager::new")
