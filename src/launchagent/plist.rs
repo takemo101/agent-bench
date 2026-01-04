@@ -72,13 +72,18 @@ impl PomodoroLaunchAgent {
         assert!(!binary_path.is_empty(), "binary_path must not be empty");
         assert!(!log_dir.is_empty(), "log_dir must not be empty");
 
+        // Use PathBuf for robust path joining (handles trailing slashes correctly)
+        let log_path = Path::new(&log_dir);
+        let stdout_path = log_path.join("stdout.log");
+        let stderr_path = log_path.join("stderr.log");
+
         Self {
             label: DEFAULT_LABEL.to_string(),
             program_arguments: vec![binary_path, "daemon".to_string()],
             run_at_load: true,
             keep_alive: true,
-            standard_out_path: format!("{}/stdout.log", log_dir),
-            standard_error_path: format!("{}/stderr.log", log_dir),
+            standard_out_path: stdout_path.to_string_lossy().to_string(),
+            standard_error_path: stderr_path.to_string_lossy().to_string(),
             working_directory: None,
             environment_variables: None,
         }
