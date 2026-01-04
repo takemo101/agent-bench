@@ -9,6 +9,8 @@ pub mod center;
 pub mod content;
 #[cfg(target_os = "macos")]
 pub mod delegate;
+#[cfg(target_os = "macos")]
+mod manager;
 
 pub use error::NotificationError;
 pub use request::{NotificationRequest, NotificationRequestId};
@@ -24,6 +26,8 @@ pub use content::{
 };
 #[cfg(target_os = "macos")]
 pub use delegate::{NotificationActionEvent, NotificationDelegate};
+#[cfg(target_os = "macos")]
+pub use manager::NotificationManager;
 
 pub mod category_ids {
     pub const WORK_COMPLETE: &str = "WORK_COMPLETE";
