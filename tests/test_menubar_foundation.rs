@@ -6,7 +6,7 @@ fn test_tray_icon_manager_structure() {
     // It will panic because implementation is stubbed with unimplemented!().
 
     // Test: new() exists
-    let _manager = std::panic::catch_unwind(|| TrayIconManager::new());
+    let _manager = std::panic::catch_unwind(TrayIconManager::new);
 
     // Expect panic or not, depending on if we implement it as unimplemented!() or just empty struct
     // For now, we just want to compile check the signatures.
