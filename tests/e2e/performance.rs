@@ -81,7 +81,7 @@ async fn test_performance_event_processing_latency() {
 
     {
         let mut eng = engine.lock().await;
-        eng.start(Some("パフォーマンステスト".to_string())).unwrap();
+        eng.start(Some(pomodoro::types::StartParams { task_name: Some("パフォーマンステスト".to_string()), ..Default::default() })).unwrap();
     }
 
     tokio::time::sleep(Duration::from_millis(100)).await;

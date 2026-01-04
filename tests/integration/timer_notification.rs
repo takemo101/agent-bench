@@ -155,7 +155,7 @@ async fn tc_i_005_work_started_event_triggers_notification() {
     let (mut engine, mut rx) = create_test_engine();
     let notification_sender = Arc::new(MockNotificationSender::new());
 
-    engine.start(Some("通知テスト".to_string())).unwrap();
+    engine.start(Some(pomodoro::types::StartParams { task_name: Some("通知テスト".to_string()), ..Default::default() })).unwrap();
 
     let event = rx.try_recv();
     assert!(event.is_ok());
@@ -215,7 +215,7 @@ async fn tc_i_006_stop_event_triggers_notification() {
     let (mut engine, mut rx) = create_test_engine();
     let notification_sender = Arc::new(MockNotificationSender::new());
 
-    engine.start(Some("停止テスト".to_string())).unwrap();
+    engine.start(Some(pomodoro::types::StartParams { task_name: Some("停止テスト".to_string()), ..Default::default() })).unwrap();
     let _ = rx.try_recv();
 
     engine.stop().unwrap();
@@ -258,7 +258,7 @@ async fn tc_i_010_focus_mode_failure_fallback() {
     let focus_controller = MockFocusModeController::new(true);
 
     engine
-        .start(Some("フォールバックテスト".to_string()))
+        .start(Some(pomodoro::types::StartParams { task_name: Some("フォールバックテスト".to_string()), ..Default::default() }))
         .unwrap();
     let _ = rx.try_recv();
 
@@ -347,7 +347,7 @@ async fn integration_event_driven_flow() {
     let focus_controller = Arc::new(MockFocusModeController::new(false));
     let notification_sender = Arc::new(MockNotificationSender::new());
 
-    engine.start(Some("統合テスト".to_string())).unwrap();
+    engine.start(Some(pomodoro::types::StartParams { task_name: Some("統合テスト".to_string()), ..Default::default() })).unwrap();
 
     while let Ok(event) = rx.try_recv() {
         if let TimerEvent::WorkStarted { task_name } = event {
@@ -405,7 +405,7 @@ async fn integration_multiple_start_stop_cycles() {
     let focus_controller = Arc::new(MockFocusModeController::new(false));
 
     for i in 1..=3 {
-        engine.start(Some(format!("サイクル{}", i))).unwrap();
+        engine.start(Some(pomodoro::types::StartParams { task_name: Some(format!("サイクル{}", i)), ..Default::default() })).unwrap();
         if let Ok(TimerEvent::WorkStarted { .. }) = rx.try_recv() {
             focus_controller.enable().unwrap();
         }

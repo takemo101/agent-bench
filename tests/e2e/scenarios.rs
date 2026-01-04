@@ -116,7 +116,7 @@ async fn test_e2e_pause_resume_flow() {
 
     {
         let mut eng = engine.lock().await;
-        eng.start(Some("一時停止テスト".to_string())).unwrap();
+        eng.start(Some(pomodoro::types::StartParams { task_name: Some("一時停止テスト".to_string()), ..Default::default() })).unwrap();
     }
 
     for _ in 0..10 {
@@ -173,7 +173,7 @@ async fn test_e2e_stop_flow() {
 
     {
         let mut eng = engine.lock().await;
-        eng.start(Some("停止テスト".to_string())).unwrap();
+        eng.start(Some(pomodoro::types::StartParams { task_name: Some("停止テスト".to_string()), ..Default::default() })).unwrap();
     }
 
     for _ in 0..10 {
@@ -209,7 +209,7 @@ async fn test_e2e_auto_cycle() {
 
     {
         let mut eng = engine.lock().await;
-        eng.start(Some("自動サイクルテスト".to_string())).unwrap();
+        eng.start(Some(pomodoro::types::StartParams { task_name: Some("自動サイクルテスト".to_string()), ..Default::default() })).unwrap();
     }
 
     loop {
@@ -261,7 +261,7 @@ async fn test_e2e_long_break_after_four_pomodoros() {
 
     {
         let mut eng = engine.lock().await;
-        eng.start(Some("4ポモドーロテスト".to_string())).unwrap();
+        eng.start(Some(pomodoro::types::StartParams { task_name: Some("4ポモドーロテスト".to_string()), ..Default::default() })).unwrap();
     }
 
     for i in 1..=4 {
@@ -339,7 +339,7 @@ async fn test_e2e_focus_mode_integration() {
 
     {
         let mut eng = engine.lock().await;
-        eng.start(Some("フォーカスモードテスト".to_string()))
+        eng.start(Some(pomodoro::types::StartParams { task_name: Some("フォーカスモードテスト".to_string()), ..Default::default() }))
             .unwrap();
     }
 

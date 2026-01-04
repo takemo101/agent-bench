@@ -176,7 +176,7 @@ pub async fn handle_request(request: IpcRequest, engine: Arc<Mutex<TimerEngine>>
 
 /// startコマンドを処理
 fn handle_start(engine: &mut TimerEngine, params: StartParams) -> IpcResponse {
-    match engine.start(params.task_name.clone()) {
+    match engine.start(Some(params)) {
         Ok(()) => {
             let state = engine.get_state();
             IpcResponse::success(
