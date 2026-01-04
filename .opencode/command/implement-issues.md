@@ -6,76 +6,168 @@
 
 ---
 
-## 🚀 複数Issue並列処理（必須ルール）
+## 📌 重要: 実装単位の原則
 
-> **⛔ 絶対ルール**: 複数Issue指定時は `background_task` + `container-worker` で並列処理すること。
-> **`task` ツールの使用は禁止**（MCPツールが継承されずcontainer-useが使えなくなる）
+> **Subtaskがある場合、実装フローはIssue単位ではなくSubtask単位で実行する。**
+> 各Subtaskが**独立したブランチ・環境・PR**を持つことが重要。
 
-複数のIssue番号が指定された場合（例: `/implement-issues 9 10`）:
-
-### ✅ 正しい実装（必ずこうする）
+| 状況 | 実装単位 | 実行内容 |
+|------|---------|---------|
+| **Subtaskあり** | **Subtask単位** | 各Subtaskごとに: ブランチ作成 → 環境構築 → TDD → レビュー → PR → CI → マージ |
+| **Subtaskなし** | Issue単位 | Issue全体で: ブランチ作成 → 環境構築 → TDD → レビュー → PR → CI → マージ |
 
 ```
-# Step 1: 各Issueに対して background_task を呼び出す（並列）
-background_task(
-    agent="container-worker",
-    description="Issue #9 実装",
-    prompt="..."
-)
-background_task(
-    agent="container-worker", 
-    description="Issue #10 実装",
-    prompt="..."
-)
+【例】Issue #8 に Subtask #9, #10, #11 がある場合
 
-# Step 2: background_output で結果を収集
-result_9 = background_output(task_id="...")
-result_10 = background_output(task_id="...")
+❌ 従来（Issue単位で1つにまとめる）:
+Issue #8 → 1ブランチ → 1環境 → 1PR
 
-# Step 3: 結果をユーザーに報告
+✅ 新（Subtask単位で独立）:
+Subtask #9  → feature/issue-9-xxx  → 環境A → PR #25 → マージ
+    ↓
+Subtask #10 → feature/issue-10-xxx → 環境B → PR #26 → マージ  ← 順次実行
+    ↓
+Subtask #11 → feature/issue-11-xxx → 環境C → PR #27 → マージ
+    ↓
+全Subtask完了 → 親Issue #8 自動クローズ
 ```
 
-### ❌ 禁止パターン（絶対にしない）
+---
+
+## 🚀 処理方式（必須ルール）
+
+> **⛔ 絶対ルール**: 各Subtaskは**独立したブランチ・環境・PR**を持つこと。
+
+### 処理方式の使い分け
+
+| 状況 | 処理方式 | 理由 |
+|------|---------|------|
+| **親Issue内のSubtask** | **順次実行** | 安定性重視、エラー追跡容易 |
+| **複数の親Issue** | **並列実行** | 独立したIssueは並列で効率化 |
+
+```
+/implement-issues 8 15   ← 複数の親Issue指定
+
+親Issue #8 (Subtask: #9, #10, #11)     ┐
+├── #9 → ブランチ → 環境 → PR → マージ  │
+├── #10 → ブランチ → 環境 → PR → マージ │ ← 順次
+└── #11 → ブランチ → 環境 → PR → マージ │
+    → #8 クローズ                       │
+                                        ├─ 並列実行
+親Issue #15 (Subtask: #16, #17)        │
+├── #16 → ブランチ → 環境 → PR → マージ │
+└── #17 → ブランチ → 環境 → PR → マージ │ ← 順次
+    → #15 クローズ                      ┘
+```
+
+### ✅ 正しい実装フロー
+
+```python
+def implement_subtasks(parent_issue_id: int, subtask_ids: list[int]):
+    """各Subtaskを順次実装（独立したブランチ・環境・PR）"""
+    
+    results = []
+    
+    for subtask_id in subtask_ids:
+        # Step 1: このSubtask用のブランチ作成（Sisyphus）
+        branch_name = create_feature_branch(subtask_id)
+        
+        # Step 2: container-workerで実装（レビューループ含む）
+        task_id = background_task(
+            agent="container-worker",
+            description=f"Subtask #{subtask_id} 実装",
+            prompt=build_subtask_prompt(subtask_id, branch_name)
+        )
+        
+        # Step 3: 完了を待つ（container-worker内でレビューループ実行済み）
+        result = background_output(task_id=task_id)
+        
+        # Step 4: CI監視 → マージ → 環境削除（Sisyphus）
+        if result.get("pr_number"):
+            post_pr_workflow(result["pr_number"], result["env_id"])
+        
+        results.append(result)
+    
+    # Step 5: 全Subtask完了 → 親Issue自動クローズ
+    if all(r.get("status") == "merged" for r in results):
+        close_parent_issue(parent_issue_id, results)
+    
+    return results
+```
+
+### container-worker内のレビューループ
+
+各container-workerは、以下のレビューループを実行してからPRを作成する:
+
+```python
+def implement_with_review_loop(subtask_id: int, env_id: str):
+    """TDD実装 + レビューループ（container-worker内で実行）"""
+    
+    MAX_REVIEW_RETRIES = 3
+    
+    # TDD実装
+    implement_tdd(env_id, subtask_id)
+    
+    # レビューループ
+    for attempt in range(MAX_REVIEW_RETRIES):
+        # 品質レビュー実行
+        review_result = task(
+            subagent_type="backend-reviewer",  # or frontend-reviewer
+            prompt=build_review_prompt(subtask_id)
+        )
+        
+        score = review_result.get("score", 0)
+        
+        if score >= 9:
+            # ✅ レビュー通過 → PR作成へ
+            return {"status": "passed", "score": score}
+        
+        # ❌ スコア不足 → 修正
+        fix_issues(env_id, review_result.get("issues", []))
+    
+    # 3回失敗 → Draft PRでエスカレーション
+    return {"status": "escalated", "score": score}
+```
+
+### Subtask実装の原則
+
+| 原則 | 説明 |
+|------|------|
+| **1 Subtask = 1 ブランチ** | `feature/issue-{subtask_id}-xxx` |
+| **1 Subtask = 1 container-use環境** | 独立した環境で実装・テスト |
+| **1 Subtask = 1 PR** | 独立したPRでレビュー・マージ |
+| **1 Subtask = 1 レビューループ** | 9点以上になるまで修正→再レビュー |
+| **順次処理** | 1つのSubtaskが完了（マージ）してから次へ |
+
+### 各Subtaskの実装フロー（レビューループ含む）
+
+```
+Subtask #9 の実装フロー:
+
+ブランチ作成 → 環境構築 → TDD実装
+                            ↓
+                     品質レビュー ←───────┐
+                            ↓            │
+                    スコア判定            │
+                     ├─ 9点以上 → PR作成 → CI → マージ → 環境削除 → ✅ 完了
+                     └─ 9点未満 → 修正 ──┘（ループ: 最大3回）
+                                         
+                            ↓ (3回失敗)
+                     Draft PR作成 → ユーザーにエスカレーション
+```
+
+各Subtaskは独立してこのフローを完了してから、次のSubtaskへ進む。
+
+### ❌ 禁止パターン
 
 | 禁止 | 理由 |
 |------|------|
+| 複数Subtaskを1つのブランチにまとめる | レビュー・ロールバックが困難 |
+| 複数Subtaskを1つのPRにまとめる | 変更が大きくなりレビュー品質低下 |
 | `task(subagent_type="container-worker", ...)` | MCPツール（container-use）が継承されない |
-| 順次処理（1つずつ実装） | 並列処理の利点が失われる |
 | ホスト環境で直接実装 | container-use必須ルール違反 |
 
-### container-worker プロンプトテンプレート
-
-> **⚡ トークン効率**: 設計書は全文埋め込みせず、参照パスのみ渡す。
-
-```markdown
-## タスク
-Issue #{issue_id} を実装し、PRを作成してください。
-
-## リポジトリ情報
-- パス: {repository_path}
-- Issue詳細: `gh issue view {issue_id}` で確認
-
-## 設計書参照
-パス: `{design_doc_path}`
-※ 実装に必要な部分のみ `read` ツールで参照すること
-
-## 実装手順
-1. ブランチ作成 → 2. container-use環境 → 3. TDD → 4. レビュー → 5. PR作成
-
-## 期待する出力（JSON形式）
-{"issue_id": N, "pr_number": N, "env_id": "xxx", "score": N}
-```
-
-### 並列処理ルール
-
-| ルール | 説明 |
-|--------|------|
-| **1 Issue = 1 container-worker** | 各Issueは独立したエージェントで処理 |
-| **1 Issue = 1 container-use環境** | 各Issueは独立した環境で実装 |
-| **依存関係チェック** | 依存Issueがある場合は順次処理 |
-| **結果収集** | 全エージェント完了後にサマリー報告 |
-
-### ⛔ `task` vs `background_task` 使い分けルール（重要）
+### ⛔ `task` vs `background_task` 使い分けルール
 
 > **MCPツール（container-use）を使う必要があるエージェントを起動する場合のみ `background_task` が必須。**
 
@@ -89,24 +181,75 @@ Issue #{issue_id} を実装し、PRを作成してください。
 - `task` → MCPツールが継承されない → container-workerが `container-use_*` にアクセス不可
 - `background_task` → MCPツールが継承される → container-use環境での実装が可能
 
-> **要点**: container-worker起動時は `background_task`、レビューエージェント起動時は `task` でOK
+### 複数親Issue指定時の並列処理
+
+複数の親Issueが指定された場合（例: `/implement-issues 8 15`）:
+
+```python
+def implement_multiple_parent_issues(parent_issue_ids: list[int]):
+    """
+    複数の親Issueを並列処理
+    各親Issue内のSubtaskは順次処理
+    """
+    
+    # 各親Issueに対してbackground_taskを起動（並列）
+    task_ids = {}
+    for parent_id in parent_issue_ids:
+        task_id = background_task(
+            agent="container-worker",
+            description=f"親Issue #{parent_id} のSubtask群を実装",
+            prompt=f"""
+## タスク
+親Issue #{parent_id} のSubtaskを**順次**実装してください。
+
+## 処理フロー
+1. Subtaskを検出: `gh issue view {parent_id}` でSubtaskリストを取得
+2. 各Subtaskを順次処理:
+   - ブランチ作成（from mainブランチ）
+   - container-use環境構築
+   - TDD実装
+   - レビュー
+   - PR作成 → CI → マージ
+   - 環境削除
+3. 全Subtask完了後、親Issue #{parent_id} をクローズ
+
+## 期待する出力（JSON形式）
+{{
+    "parent_issue_id": {parent_id},
+    "subtasks": [
+        {{"subtask_id": N, "pr_number": N, "status": "merged"}},
+        ...
+    ],
+    "parent_closed": true
+}}
+"""
+        )
+        task_ids[parent_id] = task_id
+    
+    # 全親Issueの完了を待つ
+    results = []
+    for parent_id, task_id in task_ids.items():
+        result = background_output(task_id=task_id)
+        results.append(result)
+    
+    # サマリー報告
+    report_parallel_results(results)
+```
 
 ### 依存関係がある場合
 
+Subtask間に依存関係がある場合は、依存元を先に実装する（順次処理なので自然に対応可能）。
+
 ```python
-def implement_issues_with_deps(issue_ids: list[int]):
-    """依存関係を考慮した実装"""
+def implement_subtasks_with_deps(subtask_ids: list[int]):
+    """依存関係を考慮した順次実装"""
     
-    # 依存グラフを構築
-    dep_graph = build_dependency_graph(issue_ids)
+    # 依存関係順にソート
+    sorted_subtasks = topological_sort(subtask_ids)
     
-    # 依存関係がないIssueをグループ化
-    independent_groups = topological_sort(dep_graph)
-    
-    for group in independent_groups:
-        # グループ内は並列実行
-        parallel_implement(group)
-        # 次グループは前グループ完了後
+    # 順次実装（依存元 → 依存先の順）
+    for subtask_id in sorted_subtasks:
+        implement_single_subtask(subtask_id)
 ```
 
 ---
@@ -362,11 +505,11 @@ Issue番号を指定します。複数指定可能。
 
 | 形式 | 例 | 処理方法 |
 |------|-----|---------|
-| 単一Issue | `/implement-issues 123` | 順次処理 **または** Subtask並列処理（自動検出） |
+| 単一Issue | `/implement-issues 123` | Subtask自動検出 → 順次処理 |
 | 複数Issue（スペース区切り） | `/implement-issues 9 10` | **並列処理** |
 | 複数Issue（カンマ区切り） | `/implement-issues 9,10,11` | **並列処理** |
 | 範囲指定 | `/implement-issues 9-12` | **並列処理** (9,10,11,12) |
-| 親Issue | `/implement-issues 8` | **Subtask自動検出 → 並列処理** |
+| 親Issue | `/implement-issues 8` | **Subtask自動検出 → 順次処理** |
 
 ### 引数パース処理
 
@@ -380,6 +523,7 @@ Issue番号を指定します。複数指定可能。
 ### 🔄 親Issue → Subtask自動検出（重要）
 
 > **単一Issue指定時は、必ずSubtaskの有無を確認すること。**
+> **⚠️ Subtaskがある場合、各Subtaskごとに独立したfeatureブランチ・container-use環境・PRを作成する。**
 
 ```python
 def resolve_issues(issue_ids: list[int]) -> list[int]:
@@ -388,6 +532,8 @@ def resolve_issues(issue_ids: list[int]) -> list[int]:
     
     - 単一Issue: Subtaskがあれば展開、なければそのまま
     - 複数Issue: そのまま使用（展開しない）
+    
+    ⚠️ 重要: Subtask展開時、各Subtaskは独立したブランチ・環境・PRを持つ
     """
     if len(issue_ids) == 1:
         parent_id = issue_ids[0]
@@ -401,7 +547,7 @@ def resolve_issues(issue_ids: list[int]) -> list[int]:
 |---------|---------|
 {format_subtask_table(subtasks)}
 
-これらを並列実装します。
+**各Subtaskごとに独立したfeatureブランチ・環境・PRを作成して順次実装します。**
 """)
             return subtasks
         else:
@@ -410,6 +556,20 @@ def resolve_issues(issue_ids: list[int]) -> list[int]:
     else:
         # 複数指定 → そのまま使用
         return issue_ids
+```
+
+#### Subtask順次実装の構造
+
+```
+親Issue #8 (ポモドーロタイマー)
+│
+├── Subtask #9 → feature/issue-9-data-types → 環境A → PR #25 → マージ → 環境A削除
+│       ↓ (完了後)
+├── Subtask #10 → feature/issue-10-timer-engine → 環境B → PR #26 → マージ → 環境B削除
+│       ↓ (完了後)
+└── Subtask #11 → feature/issue-11-ipc-server → 環境C → PR #27 → マージ → 環境C削除
+        ↓
+全Subtask完了 → 親Issue #8 自動クローズ
 ```
 
 #### Subtask検出ロジック
@@ -507,23 +667,23 @@ def detect_subtasks_with_fallback(parent_issue_id: int) -> tuple[list[int], str]
 
 | 検出結果 | 処理 |
 |---------|------|
-| Subtask検出（N件） | 依存関係チェック → 並列/順次実装 |
+| Subtask検出（N件） | 依存関係チェック → 順次実装 |
 | Subtaskなし + 200行以下 | 単体実装 |
 | Subtaskなし + 200行超 | `/decompose-issue` を案内 |
 
-#### Subtask依存関係チェック（並列実行前に必須）
+#### Subtask依存関係チェック（順次実行時の順序決定）
 
-> **⚠️ 重要**: Subtask間に依存関係がある場合、並列実行すると失敗する可能性がある。
-> 必ず依存関係をチェックし、依存がある場合は順序付けて実行すること。
+> **⚠️ 重要**: Subtask間に依存関係がある場合、依存元を先に実装する必要がある。
+> 順次実行なので依存関係順にソートすれば自然に対応可能。
 
 ```python
-def check_subtask_dependencies(subtask_ids: list[int]) -> list[list[int]]:
+def check_subtask_dependencies(subtask_ids: list[int]) -> list[int]:
     """
-    Subtask間の依存関係をチェックし、実行グループに分割
+    Subtask間の依存関係をチェックし、実行順序を決定
     
     Returns:
-        実行グループのリスト（各グループ内は並列実行可能）
-        例: [[9, 10], [11]]  # 9,10を並列実行 → 完了後に11を実行
+        依存関係順にソートされたSubtask IDリスト
+        例: [9, 10, 11]  # 9を先に実装 → 10 → 11の順
     """
     dependencies = {}  # {issue_id: [depends_on_ids]}
     
@@ -549,18 +709,18 @@ def check_subtask_dependencies(subtask_ids: list[int]) -> list[list[int]]:
         dependencies[issue_id] = list(set(deps))
     
     # トポロジカルソートで実行順序を決定
-    return topological_sort_groups(subtask_ids, dependencies)
+    return topological_sort(subtask_ids, dependencies)
 
-def topological_sort_groups(ids: list[int], deps: dict[int, list[int]]) -> list[list[int]]:
+def topological_sort(ids: list[int], deps: dict[int, list[int]]) -> list[int]:
     """
-    依存関係を考慮してグループ分け
+    依存関係を考慮してソート（順次実行用）
     
     例:
     - #9: 依存なし
     - #10: 依存なし
     - #11: #9に依存
     
-    結果: [[9, 10], [11]]
+    結果: [9, 10, 11] または [10, 9, 11]（#11は最後）
     """
     # 入次数を計算
     in_degree = {id: 0 for id in ids}
@@ -569,62 +729,52 @@ def topological_sort_groups(ids: list[int], deps: dict[int, list[int]]) -> list[
             if dep in in_degree:
                 in_degree[id] += 1
     
-    groups = []
+    sorted_ids = []
     remaining = set(ids)
     
     while remaining:
-        # 入次数0のノードを現在のグループに
-        current_group = [id for id in remaining if in_degree.get(id, 0) == 0]
+        # 入次数0のノードを取得
+        ready = [id for id in remaining if in_degree.get(id, 0) == 0]
         
-        if not current_group:
+        if not ready:
             # 循環依存を検出
             raise ValueError(f"循環依存を検出: {remaining}")
         
-        groups.append(current_group)
-        
-        # 処理済みノードを除外し、依存先の入次数を減らす
-        for id in current_group:
+        # 順次実行なので、1つずつリストに追加
+        for id in ready:
+            sorted_ids.append(id)
             remaining.remove(id)
             for other_id in remaining:
                 if id in deps.get(other_id, []):
                     in_degree[other_id] -= 1
     
-    return groups
+    return sorted_ids
 ```
 
 #### 依存関係に応じた実行フロー
 
 ```python
 def implement_subtasks_with_deps(parent_id: int, subtask_ids: list[int]):
-    """依存関係を考慮したSubtask実装"""
+    """依存関係を考慮したSubtask順次実装"""
     
-    # 依存関係をチェック
-    execution_groups = check_subtask_dependencies(subtask_ids)
+    # 依存関係をチェックしてソート
+    sorted_subtasks = check_subtask_dependencies(subtask_ids)
     
-    if len(execution_groups) == 1:
-        # 依存関係なし → 全て並列実行
-        report_to_user(f"📋 {len(subtask_ids)}件のSubtaskを並列実装します")
-        parallel_implement(execution_groups[0])
-    else:
-        # 依存関係あり → グループごとに順次実行
-        report_to_user(f"""
-📋 {len(subtask_ids)}件のSubtaskを依存関係に従って実装します
-
-| グループ | Subtask | 依存先 |
-|---------|---------|--------|
-{format_dependency_table(execution_groups)}
-
-依存関係があるため、グループ単位で順次実行します。
-""")
+    report_to_user(f"📋 {len(subtask_ids)}件のSubtaskを依存関係順に実装します: {sorted_subtasks}")
+    
+    results = []
+    for i, subtask_id in enumerate(sorted_subtasks, 1):
+        report_to_user(f"🔄 Subtask {i}/{len(sorted_subtasks)}: #{subtask_id} を実装中...")
         
-        for i, group in enumerate(execution_groups):
-            report_to_user(f"🔄 グループ {i+1}/{len(execution_groups)} を実行中...")
-            results = parallel_implement(group)
-            
-            # グループ内で失敗があれば中断
-            if any(r['status'] == 'failed' for r in results):
-                report_to_user("⚠️ 依存元の実装に失敗。後続グループをスキップします")
-                break
+        result = implement_single_subtask(subtask_id)
+        results.append(result)
+        
+        # 失敗したら中断
+        if result.get('status') == 'failed':
+            report_to_user(f"⚠️ Subtask #{subtask_id} の実装に失敗。後続をスキップします")
+            break
+    
+    return results
 ```
 
 | 依存パターン | 検出キーワード |
@@ -635,12 +785,35 @@ def implement_subtasks_with_deps(parent_id: int, subtask_ids: list[int]):
 
 ## ワークフロー概要
 
-<!-- [DIAGRAM-FOR-HUMANS] 全体ワークフロー図（AI処理時はスキップ）
-単一Issue指定 → Subtask検出 → [Subtaskあり] → 並列実装
-                           → [Subtaskなし] → 粒度チェック → [200行超] → /decompose-issue
-                                                        → [200行以下] → 単体実装
+### 実装単位の考え方
 
-Issue（200行以下） → ブランチ作成 → container-use環境 → TDD → レビュー → PR作成 → CI → マージ
+> **⚠️ 重要**: 実装フローの単位は「Issue」ではなく「実装可能な最小単位」である。
+> - Subtaskがある場合 → **Subtask単位**で実装フローを実行
+> - Subtaskがない場合 → **Issue単位**で実装フローを実行
+
+```
+【従来】Issue単位で実装
+Issue #8 → ブランチ → 環境 → TDD → レビュー → PR → CI → マージ
+
+【新】Subtaskがある場合はSubtask単位で実装
+Issue #8 (親)
+├── Subtask #9 → ブランチ → 環境 → TDD → レビュー → PR → CI → マージ
+│       ↓ (完了後)
+├── Subtask #10 → ブランチ → 環境 → TDD → レビュー → PR → CI → マージ  ← 順次実行
+│       ↓ (完了後)
+└── Subtask #11 → ブランチ → 環境 → TDD → レビュー → PR → CI → マージ
+    ↓
+全Subtask完了 → 親Issue #8 自動クローズ
+```
+
+<!-- [DIAGRAM-FOR-HUMANS] 全体ワークフロー図（AI処理時はスキップ）
+単一Issue指定 → Subtask検出 → [Subtaskあり] → Subtask単位で順次実装（各Subtaskが独立した実装フロー）
+                           → [Subtaskなし] → 粒度チェック → [200行超] → /decompose-issue
+                                                        → [200行以下] → Issue単位で実装
+
+実装フロー（Issue/Subtask共通）:
+ブランチ作成 → container-use環境 → TDD → レビュー → PR作成 → CI → マージ
+
 → 全Subtask完了 → Parent Issue Close
 -->
 
@@ -807,52 +980,126 @@ background_task(
 )
 ```
 
-#### 並列実装時（複数Issue）
+#### Subtask順次実装時のブランチ作成
+
+> **⚠️ 重要**: 各Subtaskごとに独立したfeatureブランチを作成する。
+> ブランチは各Subtask実装開始時に作成（事前一括作成は不要）。
 
 ```python
-def prepare_branches_for_parallel(issue_ids: list[int]) -> dict[int, str]:
+def create_subtask_branch(subtask_id: int) -> str:
     """
-    Sisyphusが全Issueのブランチを事前に作成
+    Sisyphusが各Subtask用のブランチを作成
+    
+    Args:
+        subtask_id: Subtask Issue ID
     
     Returns:
-        {issue_id: branch_name} のマッピング
+        作成したブランチ名
     """
-    branches = {}
-    
-    # mainを最新化（1回だけ）
+    # mainを最新化
     bash("git checkout main && git pull origin main")
     
-    for issue_id in issue_ids:
-        issue = fetch_github_issue(issue_id)
-        short_desc = slugify(issue.title)[:30]
-        branch_name = f"feature/issue-{issue_id}-{short_desc}"
-        
-        # ブランチ作成 & プッシュ
-        bash(f"git checkout main")  # 毎回mainから分岐
-        bash(f"git checkout -b {branch_name}")
-        bash(f"git push -u origin {branch_name}")
-        
-        branches[issue_id] = branch_name
+    # Subtask情報を取得
+    issue = fetch_github_issue(subtask_id)
+    short_desc = slugify(issue.title)[:30]
+    
+    # featureブランチを作成
+    branch_name = f"feature/issue-{subtask_id}-{short_desc}"
+    bash(f"git checkout -b {branch_name}")
+    bash(f"git push -u origin {branch_name}")
     
     # mainに戻る
     bash("git checkout main")
     
-    return branches
+    return branch_name
 
-# 使用例
-branches = prepare_branches_for_parallel([9, 10, 11])
+# 使用例: Subtask順次実装
+subtasks = detect_subtasks(parent_issue_id=8)  # → [9, 10, 11]
 
-# 各container-workerにブランチ名を渡す
-for issue_id, branch_name in branches.items():
-    background_task(
+for subtask_id in subtasks:
+    # Step 1: このSubtask用のブランチ作成
+    branch_name = create_subtask_branch(subtask_id)
+    
+    # Step 2: container-workerで実装
+    task_id = background_task(
         agent="container-worker",
         prompt=f"""
+        ## タスク
+        Subtask #{subtask_id} を実装し、PRを作成してください。
+        
         ## ブランチ情報（Sisyphusが作成済み）
         - ブランチ名: {branch_name}
         - ⚠️ 新規ブランチを作成しないこと（既存を使用）
-        ...
+        - container-use環境作成時に `from_git_ref="{branch_name}"` を指定
+        
+        ## 親Issue
+        - 親Issue: #8（全Subtask完了後にSisyphusが自動クローズ）
+        
+        ## 期待する出力（JSON形式）
+        {{"subtask_id": {subtask_id}, "pr_number": N, "env_id": "xxx", "score": N}}
         """
     )
+    
+    # Step 3: 完了を待つ
+    result = background_output(task_id=task_id)
+    
+    # Step 4: CI監視 → マージ → 環境削除
+    post_pr_workflow(result["pr_number"], result["env_id"])
+```
+
+#### Subtask順次実装の全体フロー
+
+```python
+def implement_parent_issue_with_subtasks(parent_issue_id: int):
+    """
+    親IssueのSubtaskを検出し、各Subtaskを順次実装
+    
+    フロー:
+    1. Subtask検出
+    2. 各Subtaskを順次処理:
+       - ブランチ作成（Sisyphus）
+       - container-workerで実装
+       - CI監視・マージ（Sisyphus）
+       - 環境削除
+    3. 全Subtask完了後、親Issue自動クローズ
+    """
+    
+    # Step 1: Subtask検出
+    subtasks = detect_subtasks(parent_issue_id)
+    if not subtasks:
+        # Subtaskなし → 単体実装
+        return implement_single_issue(parent_issue_id)
+    
+    report_to_user(f"📋 親Issue #{parent_issue_id} から {len(subtasks)}件のSubtaskを検出。順次実装します。")
+    
+    results = []
+    
+    # Step 2: 各Subtaskを順次処理
+    for i, subtask_id in enumerate(subtasks, 1):
+        report_to_user(f"🔄 Subtask {i}/{len(subtasks)}: #{subtask_id} を実装中...")
+        
+        # 2a: ブランチ作成
+        branch_name = create_subtask_branch(subtask_id)
+        
+        # 2b: container-workerで実装
+        task_id = background_task(
+            agent="container-worker",
+            description=f"Subtask #{subtask_id} 実装",
+            prompt=build_subtask_worker_prompt(subtask_id, branch_name, parent_issue_id)
+        )
+        result = background_output(task_id=task_id)
+        
+        # 2c: CI監視・マージ・環境削除
+        if result.get("pr_number"):
+            post_pr_workflow(result["pr_number"], result["env_id"])
+        
+        results.append(result)
+    
+    # Step 3: 全Subtask完了確認 → 親Issue自動クローズ
+    if all(r.get("status") == "merged" for r in results):
+        close_parent_issue(parent_issue_id, results)
+    
+    return results
 ```
 
 **ブランチ命名規則**:
@@ -1744,21 +1991,53 @@ def safe_gh_api_call(command: str, max_retries: int = 3) -> tuple[bool, str]:
 1. Issue受領
      ↓
 2. 【単一Issue指定時】Subtask自動検出 ★重要★
-     ├─ Subtaskあり → 並列実装へ（Step 4へ）
-     └─ Subtaskなし → 粒度チェックへ（Step 3へ）
+     ├─ Subtaskあり → Step 3へ（Subtask単位で実装）
+     └─ Subtaskなし → 粒度チェックへ（Step 4へ）
      ↓
 3. 粒度チェック（200行以下か?）
      ├─ No（大きい）→ `/decompose-issue` を実行してから再度呼び出し
      └─ Yes（適切）→ 実装開始
      ↓
-4. 各Issueを並列実行（container-worker）
+4. 各Subtaskを順次実装（container-worker）
+     ※ 各Subtaskが独立した実装フローを実行:
+        ブランチ → 環境 → TDD → レビュー(9点以上までループ) → PR
      ↓
-5. CI監視 → マージ（各Issueごと）
+5. CI監視 → マージ（各PR単位）
      ↓
-6. 全Issue完了 → 親Issue自動クローズ（該当する場合）
+6. 次のSubtaskへ（Step 4に戻る）
+     ↓
+7. 全Subtask完了 → 親Issue自動クローズ
+```
+
+#### 実装フローの単位
+
+| 状況 | 実装単位 | 作成されるもの |
+|------|---------|---------------|
+| Subtaskなし | Issue単位 | 1ブランチ、1環境、1レビューループ、1PR |
+| Subtaskあり | **Subtask単位** | **N個のブランチ、N個の環境、N個のレビューループ、N個のPR** |
+
+#### 各Subtaskで実行される完全フロー
+
+```
+Subtask #N:
+  ブランチ作成 → container-use環境
+       ↓
+  TDD実装 (Red → Green → Refactor)
+       ↓
+  品質レビュー ←──────┐
+       ↓             │
+  9点以上? ──No────→ 修正（最大3回）
+       ↓ Yes
+  ユーザー承認
+       ↓
+  PR作成 → CI監視 → マージ → 環境削除
+       ↓
+  ✅ このSubtask完了 → 次のSubtaskへ
 ```
 
 ### ⚡ Subtask自動検出（単一Issue指定時は必須）
+
+> **⚠️ 重要**: Subtaskがある場合、**各Subtaskごとに独立したfeatureブランチ・container-use環境・PR**を作成する。
 
 ```python
 # /implement-issues 8 のように単一Issue指定された場合
@@ -1769,21 +2048,58 @@ def handle_single_issue(issue_id: int):
     subtasks = detect_subtasks(issue_id)
     
     if subtasks:
-        # Step 2a: Subtaskあり → 並列実装
+        # Step 2a: Subtaskあり → 各Subtaskを順次実装
+        
         report_to_user(f"""
 📋 **親Issue #{issue_id} から {len(subtasks)}件のSubtaskを検出しました**
 
 Subtask: {', '.join(f'#{s}' for s in subtasks)}
 
-これらを並列実装します。
+**各Subtaskごとに独立したfeatureブランチ・環境・PRを作成して順次実装します。**
 """)
-        # background_task で並列起動
-        for subtask_id in subtasks:
-            background_task(
+        
+        results = []
+        
+        # 各Subtaskを順次処理（1つ完了してから次へ）
+        for i, subtask_id in enumerate(subtasks, 1):
+            report_to_user(f"🔄 Subtask {i}/{len(subtasks)}: #{subtask_id} を実装中...")
+            
+            # ブランチ作成
+            branch_name = create_subtask_branch(subtask_id)
+            
+            # container-workerで実装
+            task_id = background_task(
                 agent="container-worker",
-                description=f"Issue #{subtask_id} 実装",
-                prompt=build_worker_prompt(subtask_id)
+                description=f"Subtask #{subtask_id} 実装",
+                prompt=f"""
+## タスク
+Subtask #{subtask_id} を実装し、PRを作成してください。
+
+## ブランチ情報（Sisyphusが作成済み）
+- ブランチ名: {branch_name}
+- ⚠️ 新規ブランチを作成しないこと（既存を使用）
+- container-use環境作成時に `from_git_ref="{branch_name}"` を指定
+
+## 親Issue
+- 親Issue: #{issue_id}（全Subtask完了後にSisyphusが自動クローズ）
+
+## 期待する出力（JSON形式）
+{{"subtask_id": {subtask_id}, "pr_number": N, "env_id": "xxx", "score": N}}
+"""
             )
+            
+            # 完了を待つ
+            result = background_output(task_id=task_id)
+            
+            # CI監視 → マージ → 環境削除
+            if result.get("pr_number"):
+                post_pr_workflow(result["pr_number"], result["env_id"])
+            
+            results.append(result)
+        
+        # 全Subtask完了 → 親Issueクローズ
+        if all(r.get("status") == "merged" for r in results):
+            close_parent_issue(issue_id, results)
     else:
         # Step 2b: Subtaskなし → 粒度チェック
         if estimate_code_lines(issue_id) > 200:
@@ -1849,19 +2165,47 @@ if estimate_code_lines(issue) > 200:
 
 ### 実装フロー（分岐条件）
 
-| 状況 | 処理方法 | 実行者 |
-|------|---------|--------|
-| **適切な粒度（200行以下）** | 直接実装 | container-worker |
-| **大きなIssue（200行超）** | → `/decompose-issue` で分割 | Sisyphus |
-| **複数Issue** | 並列実装 | container-worker × N |
+| 状況 | 処理方法 | 作成されるもの |
+|------|---------|---------------|
+| **Subtaskあり** | 各Subtask単位で**順次**実装 | Subtask数 × (ブランチ + 環境 + PR) |
+| **Subtaskなし + 200行以下** | Issue単位で直接実装 | 1ブランチ + 1環境 + 1PR |
+| **Subtaskなし + 200行超** | `/decompose-issue` で分割 | - |
+| **複数親Issue指定** | 各親Issue単位で**並列**実装（親Issue内Subtaskは順次） | 親Issue数 × (Subtask数 × ブランチ + 環境 + PR) |
 
 ### Phase別の責任分担
 
+> **Note**: 以下のフローは**Issue単位でもSubtask単位でも同一**。
+> Subtaskがある場合は、各Subtaskがこのフローを**順次**実行する。
+
 | Phase | 実行者 | 内容 |
 |-------|--------|------|
-| **0-9. 実装→PR** | container-worker | TDD、レビュー、PR作成 |
-| **10-11. CI→マージ** | Sisyphus | CI監視、マージ、環境削除 |
+| **0. ブランチ作成** | Sisyphus | 各Subtask実装開始時にfeatureブランチを作成 |
+| **1-9. 実装→PR** | container-worker | 環境構築、TDD、レビュー、PR作成（1 Subtaskずつ） |
+| **10-11. CI→マージ** | Sisyphus | CI監視、マージ、環境削除（各PR単位） |
 | **12. 親Issueクローズ** | Sisyphus | 全Subtask完了確認、親Issue自動クローズ |
+
+#### Subtask順次実装時の全体像
+
+```
+Sisyphus (親エージェント)
+│
+├── Subtask #9 を処理
+│   ├── Phase 0: ブランチ作成 (feature/issue-9-data-types)
+│   ├── Phase 1-9: container-worker → 実装 → PR #25
+│   └── Phase 10-11: CI監視 → マージ → 環境削除
+│       ↓ (完了後)
+├── Subtask #10 を処理
+│   ├── Phase 0: ブランチ作成 (feature/issue-10-timer-engine)
+│   ├── Phase 1-9: container-worker → 実装 → PR #26
+│   └── Phase 10-11: CI監視 → マージ → 環境削除
+│       ↓ (完了後)
+├── Subtask #11 を処理
+│   ├── Phase 0: ブランチ作成 (feature/issue-11-ipc-server)
+│   ├── Phase 1-9: container-worker → 実装 → PR #27
+│   └── Phase 10-11: CI監視 → マージ → 環境削除
+│       ↓ (完了後)
+└── Phase 12: 全Subtask完了 → 親Issue #8 自動クローズ
+```
 
 ### ⛔ 必須チェックリスト
 
@@ -1869,8 +2213,13 @@ if estimate_code_lines(issue) > 200:
 □ 【単一Issue指定時】Subtask検出を実行したか? ★最優先★
 □ Issue粒度チェック（200行以下か?）
 □ 大きい場合は `/decompose-issue` を案内したか?
+□ 【Subtaskあり】各Subtaskに独立したfeatureブランチを作成したか? ★重要★
+□ 【Subtaskあり】各Subtaskに独立したcontainer-use環境を作成したか? ★重要★
+□ 【Subtaskあり】各Subtaskで独立したレビューループを実行したか? ★重要★
+□ 【Subtaskあり】各Subtaskに独立したPRを作成したか? ★重要★
+□ 【レビュー】各Subtaskが9点以上を獲得するまでループしたか?
 □ background_task を使用しているか?（⛔ task 禁止）
-□ 各Issueに独立した container-worker を起動するか?
+□ Subtaskは順次処理しているか?（1つ完了してから次へ）
 □ 全Subtask完了後、親Issueをクローズしたか?
 ```
 
@@ -1891,9 +2240,14 @@ if estimate_code_lines(issue) > 200:
 |----------|-------------|
 | **単一Issue指定時にSubtask検出をスキップ** | **必ず `detect_subtasks()` を実行** |
 | 親IssueをそのままSubtaskなしで実装開始 | まずSubtask検出 → なければ粒度チェック |
+| **Subtask全体で1つのブランチを共有** | **各Subtaskごとに独立したfeatureブランチを作成** |
+| **Subtask全体で1つのPRを作成** | **各Subtaskごとに独立したPRを作成** |
+| **Subtask全体で1つのcontainer-use環境を共有** | **各Subtaskごとに独立した環境を作成** |
+| **レビューをスキップしてPR作成** | **各Subtaskで9点以上になるまでレビューループ** |
+| **レビュー1回で諦めてPR作成** | **最大3回までリトライ、それでも失敗ならDraft PR** |
 | 大きなIssueをそのまま実装 | `/decompose-issue` で分割してから実装 |
 | `task(subagent_type="container-worker", ...)` | `background_task(agent="container-worker", ...)` |
-| 結果を待たずに次へ進む | `background_output` で全結果を収集してから報告 |
+| Subtaskを並列実行 | Subtaskは順次実行（1つ完了してから次へ） |
 | 全Subtask完了後、親Issueを放置 | 必ず自動クローズ処理を実行 |
 
 ### 完了報告フォーマット
@@ -1904,22 +2258,25 @@ if estimate_code_lines(issue) > 200:
 ### 親Issue
 - **#{parent_id}**: {parent_title} → ✅ Closed
 
-### Subtask結果
+### Subtask結果（各Subtaskが独立した実装フローを完了）
 
-| Subtask | PR | CI | マージ | 行数 |
-|---------|-----|-----|-------|------|
-| #{s1} | PR #{p1} | ✅ | ✅ | 80行 |
-| #{s2} | PR #{p2} | ✅ | ✅ | 120行 |
-| #{s3} | PR #{p3} | ✅ | ✅ | 150行 |
+| Subtask | ブランチ | 環境ID | レビュー | PR | CI | マージ |
+|---------|---------|--------|---------|-----|-----|-------|
+| #{s1} | feature/issue-{s1}-xxx | env-aaa | 10/10 (1回目) | PR #{p1} | ✅ | ✅ |
+| #{s2} | feature/issue-{s2}-xxx | env-bbb | 9/10 (2回目) | PR #{p2} | ✅ | ✅ |
+| #{s3} | feature/issue-{s3}-xxx | env-ccc | 9/10 (1回目) | PR #{p3} | ✅ | ✅ |
 
 ### 統計
 - 総Subtask数: 3
 - 成功: 3
 - 失敗: 0
-- 合計コード行数: 350行
+- レビュー平均スコア: 9.3/10
+- 作成されたPR数: 3（各Subtaskに1つ）
 
 ### 環境クリーンアップ
-- ✅ 全環境削除済み
+- ✅ env-aaa 削除済み
+- ✅ env-bbb 削除済み
+- ✅ env-ccc 削除済み
 ```
 
 ## 参考
