@@ -21,6 +21,8 @@ tracing-subscriber = "0.3"
 colored = "2.1"
 rodio = { version = "0.20", default-features = false, features = ["symphonia-all"] }
 async-trait = "0.1"
+tray-icon = "0.19"
+image = "0.25"
 
 # macOS-specific dependencies for native notification system
 [target.'cfg(target_os = "macos")'.dependencies]
