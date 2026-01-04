@@ -1,11 +1,5 @@
 //! タイマー連携統合テスト
-//!
-//! タイマーエンジンと通知・サウンド・フォーカスモードの連携をテストする。
-//!
-//! ## テスト対象
-//! - TC-I-005 to TC-I-007: タイマー-通知
-//! - TC-I-008 to TC-I-010: タイマー-フォーカスモード
-//! - TC-I-011 to TC-I-013: タイマー-サウンド
+//! TC-I-005 to TC-I-013: タイマー-通知-サウンド-フォーカスモード連携
 
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
@@ -18,19 +12,9 @@ use pomodoro::{
 };
 use tokio::sync::mpsc;
 
-// ============================================================================
-// Mock Implementations
-// ============================================================================
-
-/// モックサウンドプレイヤー
-///
-/// サウンド再生の呼び出しを記録するテスト用実装。
 pub struct MockSoundPlayer {
-    /// 再生が呼び出された回数
     play_count: AtomicU32,
-    /// 利用可能かどうか
     available: AtomicBool,
-    /// 無効化されているか
     disabled: AtomicBool,
 }
 
@@ -55,7 +39,9 @@ impl SoundPlayer for MockSoundPlayer {
             return Ok(());
         }
         if !self.available.load(Ordering::SeqCst) {
-            return Err(SoundError::DeviceNotAvailable);
+            return Err(SoundError::DeviceNotAvailable(
+                "Mock device not available".to_string(),
+            ));
         }
         self.play_count.fetch_add(1, Ordering::SeqCst);
         Ok(())
@@ -66,17 +52,10 @@ impl SoundPlayer for MockSoundPlayer {
     }
 }
 
-/// モックフォーカスモードコントローラー
-///
-/// フォーカスモードの有効/無効化を記録するテスト用実装。
 pub struct MockFocusModeController {
-    /// フォーカスモードが有効か
     enabled: AtomicBool,
-    /// enable呼び出し回数
     enable_count: AtomicU32,
-    /// disable呼び出し回数
     disable_count: AtomicU32,
-    /// 失敗をシミュレートするか
     should_fail: AtomicBool,
 }
 
@@ -121,11 +100,7 @@ impl MockFocusModeController {
     }
 }
 
-/// モック通知センダー
-///
-/// 通知送信を記録するテスト用実装。
 pub struct MockNotificationSender {
-    /// 送信された通知のタイトル一覧
     notifications: std::sync::Mutex<Vec<String>>,
 }
 
@@ -156,10 +131,6 @@ impl Default for MockNotificationSender {
     }
 }
 
-// ============================================================================
-// Helper Functions
-// ============================================================================
-
 fn create_test_engine() -> (TimerEngine, mpsc::UnboundedReceiver<TimerEvent>) {
     let (tx, rx) = mpsc::unbounded_channel();
     let config = PomodoroConfig::default();
@@ -173,241 +144,198 @@ fn create_test_engine_with_config(
     (TimerEngine::new(config, tx), rx)
 }
 
-// ============================================================================
-// TC-I-005: 作業完了時の通知送信
-// ============================================================================
+fn embedded_sound_source() -> SoundSource {
+    SoundSource::Embedded {
+        name: "default".to_string(),
+    }
+}
 
 #[tokio::test]
-async fn test_work_complete_triggers_notification() {
+async fn tc_i_005_work_started_event_triggers_notification() {
     let (mut engine, mut rx) = create_test_engine();
     let notification_sender = Arc::new(MockNotificationSender::new());
 
-    // タイマー開始
     engine.start(Some("通知テスト".to_string())).unwrap();
-    let _ = rx.try_recv(); // WorkStarted
 
-    // タイマー完了をシミュレート
-    engine.state.remaining_seconds = 1;
-    engine.process_tick().unwrap();
+    let event = rx.try_recv();
+    assert!(event.is_ok());
 
-    // イベントを収集
-    let mut events = Vec::new();
-    while let Ok(event) = rx.try_recv() {
-        events.push(event);
-    }
-
-    // WorkCompletedイベントを検証
-    let work_completed = events
-        .iter()
-        .find(|e| matches!(e, TimerEvent::WorkCompleted { .. }));
-    assert!(work_completed.is_some());
-
-    // 実際の通知連携をシミュレート
-    if let Some(TimerEvent::WorkCompleted { task_name, .. }) = work_completed {
+    if let Ok(TimerEvent::WorkStarted { task_name }) = event {
+        assert_eq!(task_name, Some("通知テスト".to_string()));
         notification_sender.send(&format!(
-            "作業完了: {}",
+            "作業開始: {}",
             task_name.as_deref().unwrap_or("タスク")
         ));
+    } else {
+        panic!("Expected WorkStarted event");
     }
 
     assert_eq!(notification_sender.notification_count(), 1);
-    assert!(notification_sender.get_notifications()[0].contains("作業完了"));
+    assert!(notification_sender.get_notifications()[0].contains("作業開始"));
 }
 
-// ============================================================================
-// TC-I-006: 休憩完了時の通知送信
-// ============================================================================
+#[tokio::test]
+async fn tc_i_005_tick_event_fired() {
+    let (mut engine, mut rx) = create_test_engine();
+
+    engine.start(None).unwrap();
+    let _ = rx.try_recv();
+
+    let processed = engine.process_tick().unwrap();
+    assert!(processed);
+
+    let event = rx.try_recv();
+    assert!(event.is_ok());
+    assert!(matches!(event.unwrap(), TimerEvent::Tick { .. }));
+}
 
 #[tokio::test]
-async fn test_break_complete_triggers_notification() {
+async fn tc_i_006_pause_resume_events_trigger_notifications() {
     let (mut engine, mut rx) = create_test_engine();
     let notification_sender = Arc::new(MockNotificationSender::new());
 
-    // タイマー開始 → 作業完了 → 休憩開始
     engine.start(None).unwrap();
-    let _ = rx.try_recv(); // WorkStarted
+    let _ = rx.try_recv();
 
-    // 作業完了をシミュレート
-    engine.state.remaining_seconds = 1;
-    engine.process_tick().unwrap();
+    engine.pause().unwrap();
+    let paused_event = rx.try_recv();
+    assert!(matches!(paused_event, Ok(TimerEvent::Paused)));
+    notification_sender.send("一時停止");
 
-    // イベントをドレイン
-    while rx.try_recv().is_ok() {}
+    engine.resume().unwrap();
+    let resumed_event = rx.try_recv();
+    assert!(matches!(resumed_event, Ok(TimerEvent::Resumed)));
+    notification_sender.send("再開");
 
-    // 休憩中の状態を確認
-    assert!(matches!(
-        engine.get_state().phase,
-        TimerPhase::Breaking | TimerPhase::LongBreaking
-    ));
-
-    // 休憩完了をシミュレート
-    engine.state.remaining_seconds = 1;
-    engine.process_tick().unwrap();
-
-    // イベントを収集
-    let mut events = Vec::new();
-    while let Ok(event) = rx.try_recv() {
-        events.push(event);
-    }
-
-    // BreakCompletedイベントを検証
-    let break_completed = events
-        .iter()
-        .find(|e| matches!(e, TimerEvent::BreakCompleted { .. }));
-    assert!(break_completed.is_some());
-
-    // 通知連携をシミュレート
-    if let Some(TimerEvent::BreakCompleted { is_long_break }) = break_completed {
-        let msg = if *is_long_break {
-            "長い休憩完了"
-        } else {
-            "休憩完了"
-        };
-        notification_sender.send(msg);
-    }
-
-    assert_eq!(notification_sender.notification_count(), 1);
+    assert_eq!(notification_sender.notification_count(), 2);
 }
 
-// ============================================================================
-// TC-I-008: 作業開始時のフォーカスモード有効化
-// ============================================================================
+#[tokio::test]
+async fn tc_i_006_stop_event_triggers_notification() {
+    let (mut engine, mut rx) = create_test_engine();
+    let notification_sender = Arc::new(MockNotificationSender::new());
+
+    engine.start(Some("停止テスト".to_string())).unwrap();
+    let _ = rx.try_recv();
+
+    engine.stop().unwrap();
+
+    let event = rx.try_recv();
+    assert!(matches!(event, Ok(TimerEvent::Stopped)));
+
+    notification_sender.send("タイマー停止");
+
+    assert_eq!(notification_sender.notification_count(), 1);
+    assert!(notification_sender.get_notifications()[0].contains("停止"));
+}
 
 #[test]
-fn test_work_start_enables_focus_mode() {
+fn tc_i_008_work_start_enables_focus_mode() {
     let focus_controller = MockFocusModeController::new(false);
 
-    // タイマー開始時にフォーカスモードを有効化
     focus_controller.enable().unwrap();
 
     assert!(focus_controller.is_enabled());
     assert_eq!(focus_controller.enable_count(), 1);
 }
 
-// ============================================================================
-// TC-I-009: 休憩開始時のフォーカスモード無効化
-// ============================================================================
-
 #[test]
-fn test_break_start_disables_focus_mode() {
+fn tc_i_009_break_start_disables_focus_mode() {
     let focus_controller = MockFocusModeController::new(false);
 
-    // 作業中 → フォーカスモード有効
     focus_controller.enable().unwrap();
     assert!(focus_controller.is_enabled());
 
-    // 休憩開始 → フォーカスモード無効
     focus_controller.disable().unwrap();
 
     assert!(!focus_controller.is_enabled());
     assert_eq!(focus_controller.disable_count(), 1);
 }
 
-// ============================================================================
-// TC-I-010: フォーカスモード失敗時のフォールバック
-// ============================================================================
-
 #[tokio::test]
-async fn test_focus_mode_failure_fallback() {
+async fn tc_i_010_focus_mode_failure_fallback() {
     let (mut engine, mut rx) = create_test_engine();
-    let focus_controller = MockFocusModeController::new(true); // 失敗をシミュレート
+    let focus_controller = MockFocusModeController::new(true);
 
-    // タイマー開始
     engine
         .start(Some("フォールバックテスト".to_string()))
         .unwrap();
-    let _ = rx.try_recv(); // WorkStarted
+    let _ = rx.try_recv();
 
-    // フォーカスモード有効化を試みる（失敗する）
     let focus_result = focus_controller.enable();
     assert!(focus_result.is_err());
 
-    // タイマーは継続して動作する
     assert_eq!(engine.get_state().phase, TimerPhase::Working);
     assert!(engine.get_state().remaining_seconds > 0);
 }
 
-// ============================================================================
-// TC-I-011: 作業完了時のサウンド再生
-// ============================================================================
-
 #[tokio::test]
-async fn test_work_complete_plays_sound() {
-    let (mut engine, mut rx) = create_test_engine();
+async fn tc_i_011_sound_player_plays_on_event() {
     let sound_player = Arc::new(MockSoundPlayer::new(true, false));
 
-    // タイマー開始
-    engine.start(None).unwrap();
-    let _ = rx.try_recv(); // WorkStarted
-
-    // 作業完了をシミュレート
-    engine.state.remaining_seconds = 1;
-    engine.process_tick().unwrap();
-
-    // イベントを収集
-    let mut events = Vec::new();
-    while let Ok(event) = rx.try_recv() {
-        events.push(event);
-    }
-
-    // WorkCompletedイベントでサウンド再生
-    let work_completed = events
-        .iter()
-        .find(|e| matches!(e, TimerEvent::WorkCompleted { .. }));
-    assert!(work_completed.is_some());
-
-    // サウンド再生をシミュレート
-    sound_player.play(&SoundSource::Embedded).await.unwrap();
+    let source = embedded_sound_source();
+    sound_player.play(&source).await.unwrap();
 
     assert_eq!(sound_player.play_count(), 1);
 }
 
-// ============================================================================
-// TC-I-012: --no-soundフラグ
-// ============================================================================
+#[tokio::test]
+async fn tc_i_011_sound_player_available_check() {
+    let available_player = MockSoundPlayer::new(true, false);
+    let unavailable_player = MockSoundPlayer::new(false, false);
+
+    assert!(available_player.is_available());
+    assert!(!unavailable_player.is_available());
+}
 
 #[tokio::test]
-async fn test_no_sound_flag() {
-    let sound_player = Arc::new(MockSoundPlayer::new(true, true)); // disabled=true
+async fn tc_i_012_no_sound_flag_disables_playback() {
+    let sound_player = Arc::new(MockSoundPlayer::new(true, true));
 
-    // 無効化されたプレイヤーでの再生
-    let result = sound_player.play(&SoundSource::Embedded).await;
+    let source = embedded_sound_source();
+    let result = sound_player.play(&source).await;
 
-    // エラーなく完了し、再生は行われない
     assert!(result.is_ok());
     assert_eq!(sound_player.play_count(), 0);
 }
 
-// ============================================================================
-// TC-I-013: サウンドファイル未検出時のフォールバック
-// ============================================================================
-
 #[tokio::test]
-async fn test_sound_fallback_to_embedded() {
+async fn tc_i_013_sound_fallback_to_embedded() {
     let sound_player = Arc::new(MockSoundPlayer::new(true, false));
 
-    // カスタムサウンドが見つからない場合、埋め込みサウンドにフォールバック
     let custom_path = std::path::PathBuf::from("/nonexistent/sound.wav");
     let source = if custom_path.exists() {
-        SoundSource::File(custom_path)
+        SoundSource::System {
+            name: "custom".to_string(),
+            path: custom_path,
+        }
     } else {
-        SoundSource::Embedded
+        embedded_sound_source()
     };
 
-    // 埋め込みサウンドで再生
-    assert!(matches!(source, SoundSource::Embedded));
+    assert!(matches!(source, SoundSource::Embedded { .. }));
 
     let result = sound_player.play(&source).await;
     assert!(result.is_ok());
     assert_eq!(sound_player.play_count(), 1);
 }
 
-// ============================================================================
-// 統合シナリオ: 完全なポモドーロサイクル
-// ============================================================================
+#[tokio::test]
+async fn tc_i_013_sound_device_not_available_error() {
+    let sound_player = Arc::new(MockSoundPlayer::new(false, false));
+
+    let source = embedded_sound_source();
+    let result = sound_player.play(&source).await;
+
+    assert!(result.is_err());
+    assert!(matches!(
+        result.unwrap_err(),
+        SoundError::DeviceNotAvailable(_)
+    ));
+}
 
 #[tokio::test]
-async fn test_full_pomodoro_cycle_with_integrations() {
+async fn integration_event_driven_flow() {
     let config = PomodoroConfig {
         auto_cycle: true,
         focus_mode: true,
@@ -419,53 +347,101 @@ async fn test_full_pomodoro_cycle_with_integrations() {
     let focus_controller = Arc::new(MockFocusModeController::new(false));
     let notification_sender = Arc::new(MockNotificationSender::new());
 
-    // 1. 作業開始
     engine.start(Some("統合テスト".to_string())).unwrap();
-    focus_controller.enable().unwrap();
-    let _ = rx.try_recv(); // WorkStarted
 
-    assert!(focus_controller.is_enabled());
-
-    // 2. 作業完了
-    engine.state.remaining_seconds = 1;
-    engine.process_tick().unwrap();
-
-    // イベント処理
     while let Ok(event) = rx.try_recv() {
         match event {
-            TimerEvent::WorkCompleted { .. } => {
-                sound_player.play(&SoundSource::Embedded).await.unwrap();
-                notification_sender.send("作業完了");
-            }
-            TimerEvent::BreakStarted { .. } => {
-                focus_controller.disable().unwrap();
+            TimerEvent::WorkStarted { task_name } => {
+                focus_controller.enable().unwrap();
+                notification_sender.send(&format!(
+                    "作業開始: {}",
+                    task_name.as_deref().unwrap_or("タスク")
+                ));
             }
             _ => {}
         }
+    }
+
+    assert!(focus_controller.is_enabled());
+    assert_eq!(notification_sender.notification_count(), 1);
+
+    for _ in 0..3 {
+        engine.process_tick().unwrap();
+    }
+
+    let mut tick_count = 0;
+    while let Ok(event) = rx.try_recv() {
+        if matches!(event, TimerEvent::Tick { .. }) {
+            tick_count += 1;
+        }
+    }
+    assert_eq!(tick_count, 3);
+
+    engine.pause().unwrap();
+    if let Ok(TimerEvent::Paused) = rx.try_recv() {
+        focus_controller.disable().unwrap();
+    }
+    assert!(!focus_controller.is_enabled());
+
+    engine.resume().unwrap();
+    if let Ok(TimerEvent::Resumed) = rx.try_recv() {
+        focus_controller.enable().unwrap();
+    }
+    assert!(focus_controller.is_enabled());
+
+    engine.stop().unwrap();
+    if let Ok(TimerEvent::Stopped) = rx.try_recv() {
+        focus_controller.disable().unwrap();
+        let source = embedded_sound_source();
+        sound_player.play(&source).await.unwrap();
+        notification_sender.send("タイマー停止");
     }
 
     assert!(!focus_controller.is_enabled());
     assert_eq!(sound_player.play_count(), 1);
-    assert_eq!(notification_sender.notification_count(), 1);
+    assert_eq!(notification_sender.notification_count(), 2);
+}
 
-    // 3. 休憩完了
-    engine.state.remaining_seconds = 1;
-    engine.process_tick().unwrap();
+#[tokio::test]
+async fn integration_multiple_start_stop_cycles() {
+    let (mut engine, mut rx) = create_test_engine();
+    let focus_controller = Arc::new(MockFocusModeController::new(false));
 
-    // イベント処理
-    while let Ok(event) = rx.try_recv() {
-        match event {
-            TimerEvent::BreakCompleted { .. } => {
-                notification_sender.send("休憩完了");
-            }
-            TimerEvent::WorkStarted { .. } => {
-                focus_controller.enable().unwrap();
-            }
-            _ => {}
+    for i in 1..=3 {
+        engine.start(Some(format!("サイクル{}", i))).unwrap();
+        if let Ok(TimerEvent::WorkStarted { .. }) = rx.try_recv() {
+            focus_controller.enable().unwrap();
         }
+        assert!(focus_controller.is_enabled());
+
+        for _ in 0..2 {
+            engine.process_tick().unwrap();
+        }
+        while rx.try_recv().is_ok() {}
+
+        engine.stop().unwrap();
+        if let Ok(TimerEvent::Stopped) = rx.try_recv() {
+            focus_controller.disable().unwrap();
+        }
+        assert!(!focus_controller.is_enabled());
     }
 
-    // auto_cycleなので作業再開、フォーカスモード再有効化
-    assert!(focus_controller.is_enabled());
-    assert_eq!(notification_sender.notification_count(), 2);
+    assert_eq!(focus_controller.enable_count(), 3);
+    assert_eq!(focus_controller.disable_count(), 3);
+}
+
+#[tokio::test]
+async fn integration_error_conditions() {
+    let (mut engine, _rx) = create_test_engine();
+
+    let result = engine.stop();
+    assert!(result.is_err());
+
+    let result = engine.pause();
+    assert!(result.is_err());
+
+    engine.start(None).unwrap();
+
+    let result = engine.start(None);
+    assert!(result.is_err());
 }

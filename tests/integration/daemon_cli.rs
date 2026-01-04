@@ -192,41 +192,7 @@ async fn test_ipc_connection_error() {
 
 #[tokio::test]
 async fn test_ipc_command_sequence() {
-    let dir = tempdir().unwrap();
-    let socket_path = dir.path().join("test.sock");
     let (engine, _rx) = create_test_engine();
-
-    // Helper: 単一リクエストを送信してレスポンスを取得
-    async fn send_request(socket_path: &std::path::Path, request: &str) -> IpcResponse {
-        let server = IpcServer::new(socket_path).unwrap();
-        let engine_clone = Arc::new(Mutex::new(TimerEngine::new(
-            PomodoroConfig::default(),
-            mpsc::unbounded_channel().0,
-        )));
-
-        let client_path = socket_path.to_path_buf();
-        let request_owned = request.to_string();
-        let client_handle = tokio::spawn(async move {
-            tokio::time::sleep(Duration::from_millis(50)).await;
-            let mut stream = UnixStream::connect(&client_path).await.unwrap();
-            stream.write_all(request_owned.as_bytes()).await.unwrap();
-
-            let mut buffer = vec![0u8; 4096];
-            let n = stream.read(&mut buffer).await.unwrap();
-            String::from_utf8(buffer[..n].to_vec()).unwrap()
-        });
-
-        let mut stream = server.accept().await.unwrap();
-        let req = IpcServer::receive_request(&mut stream).await.unwrap();
-        let resp = handle_request(req, engine_clone).await;
-        IpcServer::send_response(&mut stream, &resp).await.unwrap();
-
-        let response_str = client_handle.await.unwrap();
-        serde_json::from_str(&response_str).unwrap()
-    }
-
-    // 以下は統合的なシーケンスをエンジン直接操作でテスト
-    // (IPCを介さない形でシーケンスを検証)
 
     // Start
     let start_response = handle_request(
