@@ -1,0 +1,29 @@
+# Rust/Cargo
+/target/
+Cargo.lock
+**/*.rs.bk
+*.pdb
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+._*
+
+# Debug
+*.dSYM/
+
+# Coverage
+*.profraw
+*.profdata
+tarpaulin-report.html
+cobertura.xml
+
+# Build artifacts
+*.tar.gz
+*.sha256
