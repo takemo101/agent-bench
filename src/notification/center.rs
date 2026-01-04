@@ -4,7 +4,7 @@ use std::sync::mpsc::Sender;
 use block2::RcBlock;
 use objc2::rc::Retained;
 use objc2::runtime::{Bool, ProtocolObject};
-use objc2_foundation::{NSError, NSSet};
+use objc2_foundation::{NSBundle, NSError, NSSet};
 use objc2_user_notifications::{
     UNAuthorizationOptions, UNAuthorizationStatus, UNNotificationCategory, UNNotificationRequest,
     UNNotificationSettings, UNUserNotificationCenter, UNUserNotificationCenterDelegate,
@@ -17,9 +17,14 @@ pub struct NotificationCenter {
 }
 
 impl NotificationCenter {
-    pub fn shared() -> Self {
+    pub fn try_shared() -> Result<Self, NotificationError> {
+        let main_bundle = NSBundle::mainBundle();
+        if main_bundle.bundleIdentifier().is_none() {
+            return Err(NotificationError::NoBundleContext);
+        }
+
         let inner = UNUserNotificationCenter::currentNotificationCenter();
-        Self { inner }
+        Ok(Self { inner })
     }
 
     pub fn request_authorization(&self, sender: Sender<Result<bool, NotificationError>>) {
@@ -99,8 +104,8 @@ mod tests {
 
     #[test]
     #[ignore = "requires signed app bundle context"]
-    fn test_notification_center_shared() {
-        let _center = NotificationCenter::shared();
+    fn test_notification_center_try_shared() {
+        let _center = NotificationCenter::try_shared().expect("failed to get notification center");
     }
 
     #[test]
