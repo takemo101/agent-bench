@@ -82,6 +82,27 @@ impl PomodoroConfig {
         }
         Ok(())
     }
+
+    /// StartParamsから設定を更新
+    ///
+    /// 指定されたパラメータのみを更新する（Noneのフィールドは更新しない）
+    pub fn update_from_params(&mut self, params: &StartParams) {
+        if let Some(work_minutes) = params.work_minutes {
+            self.work_minutes = work_minutes;
+        }
+        if let Some(break_minutes) = params.break_minutes {
+            self.break_minutes = break_minutes;
+        }
+        if let Some(long_break_minutes) = params.long_break_minutes {
+            self.long_break_minutes = long_break_minutes;
+        }
+        if let Some(auto_cycle) = params.auto_cycle {
+            self.auto_cycle = auto_cycle;
+        }
+        if let Some(focus_mode) = params.focus_mode {
+            self.focus_mode = focus_mode;
+        }
+    }
 }
 
 /// タイマーの現在状態
@@ -637,5 +658,84 @@ mod tests {
         assert!(params.task_name.is_none());
         assert!(params.auto_cycle.is_none());
         assert!(params.focus_mode.is_none());
+    }
+
+    // ------------------------------------------------------------------------
+    // PomodoroConfig update_from_params Tests
+    // ------------------------------------------------------------------------
+
+    #[test]
+    fn test_pomodoro_config_update_from_params_work_minutes() {
+        let mut config = PomodoroConfig::default();
+        let params = StartParams {
+            work_minutes: Some(2),
+            ..Default::default()
+        };
+
+        config.update_from_params(&params);
+
+        assert_eq!(config.work_minutes, 2);
+        assert_eq!(config.break_minutes, 5);
+        assert_eq!(config.long_break_minutes, 15);
+    }
+
+    #[test]
+    fn test_pomodoro_config_update_from_params_all_fields() {
+        let mut config = PomodoroConfig::default();
+        let params = StartParams {
+            work_minutes: Some(30),
+            break_minutes: Some(10),
+            long_break_minutes: Some(20),
+            auto_cycle: Some(true),
+            focus_mode: Some(true),
+            task_name: Some("テスト".to_string()),
+        };
+
+        config.update_from_params(&params);
+
+        assert_eq!(config.work_minutes, 30);
+        assert_eq!(config.break_minutes, 10);
+        assert_eq!(config.long_break_minutes, 20);
+        assert!(config.auto_cycle);
+        assert!(config.focus_mode);
+    }
+
+    #[test]
+    fn test_pomodoro_config_update_from_params_empty() {
+        let mut config = PomodoroConfig::default();
+        let original = config.clone();
+        let params = StartParams::default();
+
+        config.update_from_params(&params);
+
+        assert_eq!(config.work_minutes, original.work_minutes);
+        assert_eq!(config.break_minutes, original.break_minutes);
+        assert_eq!(config.long_break_minutes, original.long_break_minutes);
+        assert_eq!(config.auto_cycle, original.auto_cycle);
+        assert_eq!(config.focus_mode, original.focus_mode);
+    }
+
+    #[test]
+    fn test_pomodoro_config_update_from_params_partial() {
+        let mut config = PomodoroConfig {
+            work_minutes: 25,
+            break_minutes: 5,
+            long_break_minutes: 15,
+            auto_cycle: false,
+            focus_mode: true,
+        };
+        let params = StartParams {
+            work_minutes: Some(10),
+            focus_mode: Some(false),
+            ..Default::default()
+        };
+
+        config.update_from_params(&params);
+
+        assert_eq!(config.work_minutes, 10);
+        assert_eq!(config.break_minutes, 5);
+        assert_eq!(config.long_break_minutes, 15);
+        assert!(!config.auto_cycle);
+        assert!(!config.focus_mode);
     }
 }

@@ -82,7 +82,11 @@ async fn test_ipc_pause_timer() {
     // 事前にタイマーを開始
     {
         let mut eng = engine.lock().await;
-        eng.start(Some("タスク".to_string())).unwrap();
+        eng.start(&StartParams {
+            task_name: Some("タスク".to_string()),
+            ..Default::default()
+        })
+        .unwrap();
     }
 
     // クライアント: pauseリクエスト
@@ -132,7 +136,11 @@ async fn test_ipc_status() {
     // タイマー開始
     {
         let mut eng = engine.lock().await;
-        eng.start(Some("ステータス確認タスク".to_string())).unwrap();
+        eng.start(&StartParams {
+            task_name: Some("ステータス確認タスク".to_string()),
+            ..Default::default()
+        })
+        .unwrap();
     }
 
     // クライアント: statusリクエスト
