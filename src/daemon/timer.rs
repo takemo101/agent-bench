@@ -7,7 +7,7 @@ use anyhow::{Context, Result};
 use tokio::sync::mpsc;
 use tokio::time::{interval, Duration, Interval, MissedTickBehavior};
 
-use crate::types::{PomodoroConfig, TimerPhase, TimerState};
+use crate::types::{PomodoroConfig, StartParams, TimerPhase, TimerState};
 
 /// タイマーイベント
 ///
@@ -87,15 +87,18 @@ impl TimerEngine {
     }
 
     /// タイマーを開始
-    pub fn start(&mut self, task_name: Option<String>) -> Result<()> {
+    pub fn start(&mut self, params: &StartParams) -> Result<()> {
         if self.state.is_running() {
             anyhow::bail!("タイマーは既に実行中です");
         }
 
-        self.state.start_working(task_name.clone());
+        self.state.config.update_from_params(params);
+        self.state.start_working(params.task_name.clone());
 
         self.event_tx
-            .send(TimerEvent::WorkStarted { task_name })
+            .send(TimerEvent::WorkStarted {
+                task_name: params.task_name.clone(),
+            })
             .context("Failed to send work started event")?;
 
         Ok(())
@@ -316,7 +319,11 @@ mod tests {
     fn test_timer_engine_start() {
         let (mut engine, mut rx) = create_test_engine();
 
-        let result = engine.start(Some("テスト".to_string()));
+        let params = StartParams {
+            task_name: Some("テスト".to_string()),
+            ..Default::default()
+        };
+        let result = engine.start(&params);
         assert!(result.is_ok());
 
         let state = engine.get_state();
@@ -338,7 +345,7 @@ mod tests {
     fn test_timer_engine_start_without_task_name() {
         let (mut engine, mut rx) = create_test_engine();
 
-        let result = engine.start(None);
+        let result = engine.start(&StartParams::default());
         assert!(result.is_ok());
 
         let state = engine.get_state();
@@ -353,14 +360,65 @@ mod tests {
     fn test_timer_engine_start_already_running() {
         let (mut engine, _rx) = create_test_engine();
 
-        engine.start(None).unwrap();
-        let result = engine.start(None);
+        engine.start(&StartParams::default()).unwrap();
+        let result = engine.start(&StartParams::default());
 
         assert!(result.is_err());
         assert!(result
             .unwrap_err()
             .to_string()
             .contains("タイマーは既に実行中です"));
+    }
+
+    #[test]
+    fn test_timer_engine_start_with_custom_work_minutes() {
+        let (mut engine, mut rx) = create_test_engine();
+
+        let params = StartParams {
+            work_minutes: Some(2),
+            task_name: Some("短いタスク".to_string()),
+            ..Default::default()
+        };
+        let result = engine.start(&params);
+        assert!(result.is_ok());
+
+        let state = engine.get_state();
+        assert_eq!(state.phase, TimerPhase::Working);
+        assert_eq!(state.remaining_seconds, 2 * 60);
+        assert_eq!(state.task_name, Some("短いタスク".to_string()));
+        assert_eq!(state.config.work_minutes, 2);
+
+        let event = rx.try_recv().unwrap();
+        assert_eq!(
+            event,
+            TimerEvent::WorkStarted {
+                task_name: Some("短いタスク".to_string())
+            }
+        );
+    }
+
+    #[test]
+    fn test_timer_engine_start_with_all_custom_params() {
+        let (mut engine, _rx) = create_test_engine();
+
+        let params = StartParams {
+            work_minutes: Some(30),
+            break_minutes: Some(10),
+            long_break_minutes: Some(20),
+            auto_cycle: Some(true),
+            focus_mode: Some(true),
+            task_name: Some("フル設定".to_string()),
+        };
+        let result = engine.start(&params);
+        assert!(result.is_ok());
+
+        let state = engine.get_state();
+        assert_eq!(state.remaining_seconds, 30 * 60);
+        assert_eq!(state.config.work_minutes, 30);
+        assert_eq!(state.config.break_minutes, 10);
+        assert_eq!(state.config.long_break_minutes, 20);
+        assert!(state.config.auto_cycle);
+        assert!(state.config.focus_mode);
     }
 
     // ------------------------------------------------------------------------
@@ -371,7 +429,7 @@ mod tests {
     fn test_timer_engine_pause() {
         let (mut engine, mut rx) = create_test_engine();
 
-        engine.start(None).unwrap();
+        engine.start(&StartParams::default()).unwrap();
         rx.try_recv().unwrap(); // consume WorkStarted
 
         let result = engine.pause();
@@ -404,7 +462,7 @@ mod tests {
     fn test_timer_engine_resume() {
         let (mut engine, mut rx) = create_test_engine();
 
-        engine.start(None).unwrap();
+        engine.start(&StartParams::default()).unwrap();
         rx.try_recv().unwrap(); // consume WorkStarted
         engine.pause().unwrap();
         rx.try_recv().unwrap(); // consume Paused
@@ -423,7 +481,7 @@ mod tests {
     fn test_timer_engine_resume_not_paused() {
         let (mut engine, _rx) = create_test_engine();
 
-        engine.start(None).unwrap();
+        engine.start(&StartParams::default()).unwrap();
 
         let result = engine.resume();
         assert!(result.is_err());
@@ -441,7 +499,11 @@ mod tests {
     fn test_timer_engine_stop() {
         let (mut engine, mut rx) = create_test_engine();
 
-        engine.start(Some("タスク".to_string())).unwrap();
+        let params = StartParams {
+            task_name: Some("タスク".to_string()),
+            ..Default::default()
+        };
+        engine.start(&params).unwrap();
         rx.try_recv().unwrap(); // consume WorkStarted
 
         let result = engine.stop();
@@ -460,7 +522,7 @@ mod tests {
     fn test_timer_engine_stop_when_paused() {
         let (mut engine, mut rx) = create_test_engine();
 
-        engine.start(None).unwrap();
+        engine.start(&StartParams::default()).unwrap();
         rx.try_recv().unwrap(); // consume WorkStarted
         engine.pause().unwrap();
         rx.try_recv().unwrap(); // consume Paused
@@ -504,7 +566,7 @@ mod tests {
     fn test_process_tick_when_paused() {
         let (mut engine, mut rx) = create_test_engine();
 
-        engine.start(None).unwrap();
+        engine.start(&StartParams::default()).unwrap();
         rx.try_recv().unwrap(); // consume WorkStarted
         engine.pause().unwrap();
         rx.try_recv().unwrap(); // consume Paused
@@ -518,7 +580,7 @@ mod tests {
     fn test_process_tick_when_running() {
         let (mut engine, mut rx) = create_test_engine();
 
-        engine.start(None).unwrap();
+        engine.start(&StartParams::default()).unwrap();
         rx.try_recv().unwrap(); // consume WorkStarted
 
         let initial_remaining = engine.get_state().remaining_seconds;
@@ -539,7 +601,11 @@ mod tests {
     fn test_process_tick_triggers_completion() {
         let (mut engine, mut rx) = create_test_engine();
 
-        engine.start(Some("タスク".to_string())).unwrap();
+        let params = StartParams {
+            task_name: Some("タスク".to_string()),
+            ..Default::default()
+        };
+        engine.start(&params).unwrap();
         rx.try_recv().unwrap(); // consume WorkStarted
 
         // Set remaining_seconds to 1 so next tick will complete
@@ -574,7 +640,11 @@ mod tests {
         let (mut engine, mut rx) = create_test_engine();
 
         // Start working and simulate completion
-        engine.start(Some("タスク".to_string())).unwrap();
+        let params = StartParams {
+            task_name: Some("タスク".to_string()),
+            ..Default::default()
+        };
+        engine.start(&params).unwrap();
         rx.try_recv().unwrap(); // consume WorkStarted
 
         // Manually set remaining_seconds to 0 and phase to Working
@@ -613,7 +683,7 @@ mod tests {
     fn test_handle_timer_complete_long_break_after_4_pomodoros() {
         let (mut engine, mut rx) = create_test_engine();
 
-        engine.start(None).unwrap();
+        engine.start(&StartParams::default()).unwrap();
         rx.try_recv().unwrap(); // consume WorkStarted
 
         // Set pomodoro_count to 3 (next will be 4th)
@@ -645,7 +715,7 @@ mod tests {
     fn test_handle_timer_complete_break_finished_no_auto_cycle() {
         let (mut engine, mut rx) = create_test_engine();
 
-        engine.start(None).unwrap();
+        engine.start(&StartParams::default()).unwrap();
         rx.try_recv().unwrap(); // consume WorkStarted
 
         // Simulate work complete and start breaking
@@ -676,7 +746,11 @@ mod tests {
         };
         let (mut engine, mut rx) = create_test_engine_with_config(config);
 
-        engine.start(Some("継続タスク".to_string())).unwrap();
+        let params = StartParams {
+            task_name: Some("継続タスク".to_string()),
+            ..Default::default()
+        };
+        engine.start(&params).unwrap();
         rx.try_recv().unwrap(); // consume WorkStarted
 
         // Simulate work complete and start breaking
@@ -713,7 +787,7 @@ mod tests {
     fn test_handle_timer_complete_long_break_finished() {
         let (mut engine, mut rx) = create_test_engine();
 
-        engine.start(None).unwrap();
+        engine.start(&StartParams::default()).unwrap();
         rx.try_recv().unwrap(); // consume WorkStarted
 
         // Simulate long break
@@ -754,7 +828,11 @@ mod tests {
         let (mut engine, mut rx) = create_test_engine();
 
         // Start work
-        engine.start(Some("集中作業".to_string())).unwrap();
+        let params = StartParams {
+            task_name: Some("集中作業".to_string()),
+            ..Default::default()
+        };
+        engine.start(&params).unwrap();
         assert_eq!(engine.get_state().phase, TimerPhase::Working);
         rx.try_recv().unwrap(); // WorkStarted
 
@@ -787,7 +865,7 @@ mod tests {
     fn test_pause_resume_preserves_remaining_time() {
         let (mut engine, mut rx) = create_test_engine();
 
-        engine.start(None).unwrap();
+        engine.start(&StartParams::default()).unwrap();
         rx.try_recv().unwrap(); // WorkStarted
 
         // Simulate some time passing
@@ -812,7 +890,7 @@ mod tests {
         };
         let (mut engine, mut rx) = create_test_engine_with_config(config);
 
-        engine.start(None).unwrap();
+        engine.start(&StartParams::default()).unwrap();
         rx.try_recv().unwrap(); // WorkStarted
 
         // Complete 4 pomodoros
@@ -844,7 +922,11 @@ mod tests {
         let (mut engine, mut rx) = create_test_engine();
 
         // Start
-        engine.start(Some("タスク".to_string())).unwrap();
+        let params = StartParams {
+            task_name: Some("タスク".to_string()),
+            ..Default::default()
+        };
+        engine.start(&params).unwrap();
         rx.try_recv().unwrap(); // WorkStarted
 
         // Process a tick
