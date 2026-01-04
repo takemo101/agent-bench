@@ -1,0 +1,29 @@
+[package]
+name = "pomodoro"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.71"
+description = "macOS専用のポモドーロタイマーCLIツール"
+authors = []
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+tokio = { version = "1.48", features = ["rt", "time", "macros", "signal"] }
+clap = { version = "4.5", features = ["derive"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+anyhow = "1.0"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+
+[profile.release]
+# リンク時最適化（LTO）有効化
+lto = true
+# コード生成ユニット数を1に設定（最大最適化）
+codegen-units = 1
+# デバッグシンボル削除
+strip = true
+# サイズ最適化
+opt-level = "z"
+# パニック時のスタックアンワインド無効化
+panic = "abort"
