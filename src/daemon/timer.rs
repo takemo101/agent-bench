@@ -5,7 +5,7 @@
 
 use anyhow::{Context, Result};
 use tokio::sync::mpsc;
-use tokio::time::{interval, Duration, MissedTickBehavior};
+use tokio::time::{interval, Duration, Interval, MissedTickBehavior};
 
 use crate::types::{PomodoroConfig, TimerPhase, TimerState};
 
@@ -40,6 +40,26 @@ pub enum TimerEvent {
 ///
 /// ポモドーロタイマーのコアロジックを担当する。
 /// 1秒ごとにティックを発火し、フェーズ完了時にイベントを送信する。
+///
+/// # 使用方法
+///
+/// ```ignore
+/// let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+/// let mut engine = TimerEngine::new(config, event_tx);
+/// let mut ticker = engine.create_ticker();
+///
+/// // メインループ（Daemon側で実装）
+/// loop {
+///     tokio::select! {
+///         _ = ticker.tick() => {
+///             engine.process_tick()?;
+///         }
+///         Some(cmd) = ipc_rx.recv() => {
+///             // コマンド処理
+///         }
+///     }
+/// }
+/// ```
 pub struct TimerEngine {
     /// タイマー状態
     state: TimerState,
@@ -54,6 +74,16 @@ impl TimerEngine {
             state: TimerState::new(config),
             event_tx,
         }
+    }
+
+    /// タイマー用のIntervalを作成
+    ///
+    /// 1秒間隔でティックを発生させるIntervalを返す。
+    /// `MissedTickBehavior::Skip` を設定済み。
+    pub fn create_ticker() -> Interval {
+        let mut ticker = interval(Duration::from_secs(1));
+        ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
+        ticker
     }
 
     /// タイマーを開始
@@ -121,34 +151,35 @@ impl TimerEngine {
         &self.state
     }
 
-    /// タイマーループを実行
+    /// 1ティック（1秒）を処理
     ///
-    /// 1秒ごとにティックを発火し、フェーズ完了時にイベントを送信する。
-    /// このメソッドは無限ループであり、外部からのキャンセルが必要。
-    pub async fn run(&mut self) -> Result<()> {
-        let mut ticker = interval(Duration::from_secs(1));
-        ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
-
-        loop {
-            ticker.tick().await;
-
-            if !self.state.is_running() {
-                continue;
-            }
-
-            let completed = self.state.tick();
-
-            // Tickイベントを送信
-            self.event_tx
-                .send(TimerEvent::Tick {
-                    remaining_seconds: self.state.remaining_seconds,
-                })
-                .context("Failed to send tick event")?;
-
-            if completed {
-                self.handle_timer_complete()?;
-            }
+    /// タイマーが実行中の場合、残り時間を1秒減らし、Tickイベントを送信する。
+    /// タイマーが完了した場合、フェーズ遷移を行う。
+    ///
+    /// # 戻り値
+    ///
+    /// - `Ok(true)`: タイマーが実行中でティックを処理した
+    /// - `Ok(false)`: タイマーが実行中ではない（停止中または一時停止中）
+    /// - `Err(...)`: イベント送信に失敗
+    pub fn process_tick(&mut self) -> Result<bool> {
+        if !self.state.is_running() {
+            return Ok(false);
         }
+
+        let completed = self.state.tick();
+
+        // Tickイベントを送信
+        self.event_tx
+            .send(TimerEvent::Tick {
+                remaining_seconds: self.state.remaining_seconds,
+            })
+            .context("Failed to send tick event")?;
+
+        if completed {
+            self.handle_timer_complete()?;
+        }
+
+        Ok(true)
     }
 
     /// タイマー完了時の処理
@@ -268,6 +299,13 @@ mod tests {
         assert_eq!(state.remaining_seconds, 0);
         assert_eq!(state.pomodoro_count, 0);
         assert!(state.task_name.is_none());
+    }
+
+    #[test]
+    fn test_create_ticker() {
+        let ticker = TimerEngine::create_ticker();
+        // Ticker should be created successfully
+        assert!(ticker.period() == Duration::from_secs(1));
     }
 
     // ------------------------------------------------------------------------
@@ -447,6 +485,82 @@ mod tests {
             .unwrap_err()
             .to_string()
             .contains("タイマーは実行されていません"));
+    }
+
+    // ------------------------------------------------------------------------
+    // TimerEngine Process Tick Tests
+    // ------------------------------------------------------------------------
+
+    #[test]
+    fn test_process_tick_when_stopped() {
+        let (mut engine, _rx) = create_test_engine();
+
+        let result = engine.process_tick();
+        assert!(result.is_ok());
+        assert!(!result.unwrap()); // Returns false when not running
+    }
+
+    #[test]
+    fn test_process_tick_when_paused() {
+        let (mut engine, mut rx) = create_test_engine();
+
+        engine.start(None).unwrap();
+        rx.try_recv().unwrap(); // consume WorkStarted
+        engine.pause().unwrap();
+        rx.try_recv().unwrap(); // consume Paused
+
+        let result = engine.process_tick();
+        assert!(result.is_ok());
+        assert!(!result.unwrap()); // Returns false when paused
+    }
+
+    #[test]
+    fn test_process_tick_when_running() {
+        let (mut engine, mut rx) = create_test_engine();
+
+        engine.start(None).unwrap();
+        rx.try_recv().unwrap(); // consume WorkStarted
+
+        let initial_remaining = engine.get_state().remaining_seconds;
+
+        let result = engine.process_tick();
+        assert!(result.is_ok());
+        assert!(result.unwrap()); // Returns true when running
+
+        // Check remaining time decreased
+        assert_eq!(
+            engine.get_state().remaining_seconds,
+            initial_remaining - 1
+        );
+
+        // Check Tick event was sent
+        let event = rx.try_recv().unwrap();
+        assert!(matches!(event, TimerEvent::Tick { .. }));
+    }
+
+    #[test]
+    fn test_process_tick_triggers_completion() {
+        let (mut engine, mut rx) = create_test_engine();
+
+        engine.start(Some("タスク".to_string())).unwrap();
+        rx.try_recv().unwrap(); // consume WorkStarted
+
+        // Set remaining_seconds to 1 so next tick will complete
+        engine.state.remaining_seconds = 1;
+
+        let result = engine.process_tick();
+        assert!(result.is_ok());
+        assert!(result.unwrap());
+
+        // Check events: Tick, WorkCompleted, BreakStarted
+        let tick = rx.try_recv().unwrap();
+        assert!(matches!(tick, TimerEvent::Tick { remaining_seconds: 0 }));
+
+        let work_completed = rx.try_recv().unwrap();
+        assert!(matches!(work_completed, TimerEvent::WorkCompleted { .. }));
+
+        let break_started = rx.try_recv().unwrap();
+        assert!(matches!(break_started, TimerEvent::BreakStarted { .. }));
     }
 
     // ------------------------------------------------------------------------
@@ -630,7 +744,7 @@ mod tests {
     }
 
     // ------------------------------------------------------------------------
-    // Integration-style Tests (without async run)
+    // Integration-style Tests
     // ------------------------------------------------------------------------
 
     #[test]
@@ -642,24 +756,26 @@ mod tests {
         assert_eq!(engine.get_state().phase, TimerPhase::Working);
         rx.try_recv().unwrap(); // WorkStarted
 
-        // Simulate tick (not complete)
-        engine.state.remaining_seconds = 10;
-        let completed = engine.state.tick();
-        assert!(!completed);
-        assert_eq!(engine.state.remaining_seconds, 9);
+        // Simulate several ticks
+        for _ in 0..5 {
+            let processed = engine.process_tick().unwrap();
+            assert!(processed);
+            rx.try_recv().unwrap(); // Tick
+        }
 
-        // Simulate completion
-        engine.state.remaining_seconds = 0;
-        engine.handle_timer_complete().unwrap();
-
-        // Should be in break now
-        assert_eq!(engine.get_state().phase, TimerPhase::Breaking);
+        // Simulate completion by setting remaining to 1 and ticking
+        engine.state.remaining_seconds = 1;
+        engine.process_tick().unwrap();
+        rx.try_recv().unwrap(); // Tick
         rx.try_recv().unwrap(); // WorkCompleted
         rx.try_recv().unwrap(); // BreakStarted
 
+        // Should be in break now
+        assert_eq!(engine.get_state().phase, TimerPhase::Breaking);
+
         // Complete break
-        engine.state.remaining_seconds = 0;
-        engine.handle_timer_complete().unwrap();
+        engine.state.remaining_seconds = 1;
+        engine.process_tick().unwrap();
 
         // Should be stopped (no auto_cycle)
         assert_eq!(engine.get_state().phase, TimerPhase::Stopped);
@@ -700,16 +816,16 @@ mod tests {
         // Complete 4 pomodoros
         for i in 1..=4 {
             // Complete work
-            engine.state.remaining_seconds = 0;
-            engine.handle_timer_complete().unwrap();
+            engine.state.remaining_seconds = 1;
+            engine.process_tick().unwrap();
             assert_eq!(engine.state.pomodoro_count, i);
 
             // Drain events
             while rx.try_recv().is_ok() {}
 
             // Complete break
-            engine.state.remaining_seconds = 0;
-            engine.handle_timer_complete().unwrap();
+            engine.state.remaining_seconds = 1;
+            engine.process_tick().unwrap();
 
             // Drain events
             while rx.try_recv().is_ok() {}
@@ -719,5 +835,40 @@ mod tests {
         }
 
         assert_eq!(engine.state.pomodoro_count, 4);
+    }
+
+    #[test]
+    fn test_interleaved_commands_and_ticks() {
+        let (mut engine, mut rx) = create_test_engine();
+
+        // Start
+        engine.start(Some("タスク".to_string())).unwrap();
+        rx.try_recv().unwrap(); // WorkStarted
+
+        // Process a tick
+        assert!(engine.process_tick().unwrap());
+        rx.try_recv().unwrap(); // Tick
+
+        // Pause (can be called while timer is running)
+        engine.pause().unwrap();
+        rx.try_recv().unwrap(); // Paused
+
+        // Process tick while paused - should return false
+        assert!(!engine.process_tick().unwrap());
+
+        // Resume
+        engine.resume().unwrap();
+        rx.try_recv().unwrap(); // Resumed
+
+        // Process tick again
+        assert!(engine.process_tick().unwrap());
+        rx.try_recv().unwrap(); // Tick
+
+        // Stop
+        engine.stop().unwrap();
+        rx.try_recv().unwrap(); // Stopped
+
+        // Process tick while stopped - should return false
+        assert!(!engine.process_tick().unwrap());
     }
 }
