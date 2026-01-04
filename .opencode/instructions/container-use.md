@@ -315,16 +315,17 @@ Work is complete when ALL conditions are met:
 - [ ] Build passes (verify with `environment_run_cmd`, if applicable)
 - [ ] Tests pass (if applicable)
 - [ ] Environment Info presented (format below)
-- [ ] PR created
+- [ ] PR created (using PR Description Template below)
 - [ ] **CI passed** (MUST wait: `gh pr checks <pr-number> --watch`)
 - [ ] PR merged (only AFTER CI passes)
-- [ ] Issue closed
-- [ ] Environment deleted: `container-use delete <env_id>` (after PR merge)
+- [ ] Issue closed (automatic if `Closes #XX` used in PR)
+- [ ] **Environment deleted**: `container-use delete <env_id>` (after PR merge)
+- [ ] **Remote branch deleted**: `git push origin --delete <branch-name>` (after PR merge)
 
 ### PR Merge Flow (MANDATORY)
 
 ```bash
-# 1. Create PR
+# 1. Create PR (with "Closes #XX" in body for auto-close)
 gh pr create --title "..." --body "..."
 
 # 2. Wait for CI to complete (NEVER skip this step)
@@ -333,8 +334,12 @@ gh pr checks <pr-number> --watch
 # 3. Merge only after CI passes
 gh pr merge <pr-number> --merge
 
-# 4. Close related issue
-gh issue close <issue-number>
+# 4. Verify issue auto-closed (if "Closes #XX" was used)
+gh issue view <issue-number>  # Should show "CLOSED"
+
+# 5. Clean up
+git push origin --delete <branch-name>  # Delete remote branch
+container-use delete <env_id>           # Delete environment
 ```
 
 **Merge Strategy**:
@@ -345,6 +350,42 @@ gh issue close <issue-number>
 **Worktree Conflict**: If adding `--delete-branch` option and it fails due to worktree, merge without it. Delete branch manually later if needed.
 
 **HARD BLOCK**: Never merge a PR without confirming CI success.
+
+### PR Description Template (MANDATORY)
+
+Use the following format when creating PRs with `gh pr create`:
+
+```bash
+gh pr create --title "the pr title" --body "$(cat <<'EOF'
+## Summary
+<1-3 bullet points summarizing changes>
+
+## Related Issues
+Closes #XX
+
+## Changes
+- <specific change 1>
+- <specific change 2>
+
+## Testing
+- [ ] `cargo test` / `npm test` passed
+- [ ] `cargo clippy` / `npm run lint` passed
+- [ ] Manual verification (if applicable)
+
+## Design Document Alignment
+- [ ] Implementation matches design document
+- [ ] OR: Deviations documented below
+
+### Deviations from Design (if any)
+<List any intentional differences from design docs with reasoning>
+EOF
+)"
+```
+
+**Key Points**:
+- `Closes #XX` automatically closes the related Issue when PR is merged
+- Multiple issues: `Closes #12, Closes #13`
+- Design alignment section ensures traceability
 
 ### Required Outputs
 
@@ -385,3 +426,13 @@ Examples:
 - `feature-issue-8-sound-playback`
 - `fix-issue-6-ci-failure`
 - `refactor-notification-module`
+
+---
+
+## Related Documents
+
+| Document | Purpose | When to Reference |
+|----------|---------|-------------------|
+| [Design Sync Policy](./design-sync.md) | Keep design docs and implementation in sync | Before/during/after implementation |
+| [Testing Strategy](./testing-strategy.md) | Handle environment-dependent code testing | When writing tests for OS/hardware-dependent code |
+| [container-use Guide](../skill/container-use-guide.md) | Step-by-step container environment setup | First time using container-use |
