@@ -8,36 +8,42 @@
 //! - `error` - エラー型定義
 //! - `plist` - Plist構造体定義、XML生成
 //! - `launchctl` - launchctlコマンド実行ラッパー
+//! - `installer` - インストール・アンインストールロジック
+//! - `status` - サービス状態確認
 //!
 //! # 例
 //!
 //! ```rust,ignore
-//! use pomodoro::launchagent::{PomodoroLaunchAgent, launchctl};
+//! use pomodoro::launchagent::{install, uninstall, is_running, get_status};
 //!
-//! // Plist生成
-//! let plist = PomodoroLaunchAgent::new(
-//!     "/usr/local/bin/pomodoro",
-//!     "/Users/username/.pomodoro/logs",
-//! );
-//! let xml = plist.to_xml()?;
+//! // LaunchAgentをインストール
+//! install()?;
 //!
-//! // サービス登録（macOSのみ）
-//! launchctl::load(&plist_path)?;
+//! // サービス状態を確認
+//! if is_running()? {
+//!     let status = get_status()?;
+//!     println!("PID: {:?}", status.pid);
+//! }
+//!
+//! // LaunchAgentをアンインストール
+//! uninstall()?;
 //! ```
 //!
 //! # 注意事項
 //!
 //! - すべてのパスは絶対パスで指定する必要がある（`~`は使用不可）
 //! - launchctl関連の関数はmacOSでのみ正常に動作する
-//! - install/uninstall関数は次のSubtask (#35) で実装予定
 
 pub mod error;
+pub mod installer;
 pub mod launchctl;
 pub mod plist;
+pub mod status;
 
-// Re-export common types
 pub use error::{LaunchAgentError, Result};
+pub use installer::{install, resolve_binary_path, uninstall};
 pub use plist::{PomodoroLaunchAgent, DEFAULT_LABEL};
+pub use status::{get_status, is_running, ServiceStatus};
 
 /// plistファイルのデフォルトパスを取得
 ///
@@ -73,33 +79,6 @@ pub fn get_log_dir() -> Result<std::path::PathBuf> {
 pub fn get_launch_agents_dir() -> Result<std::path::PathBuf> {
     let home_dir = dirs::home_dir().ok_or(LaunchAgentError::HomeDirectoryNotFound)?;
     Ok(home_dir.join("Library/LaunchAgents"))
-}
-
-// Stub functions for install/uninstall (to be implemented in Subtask #35)
-// These are placeholder signatures that will be fully implemented later.
-
-/// LaunchAgentをインストールする（スタブ - #35で実装予定）
-///
-/// # Returns
-/// インストール成功時はOk、失敗時はErr
-///
-/// # Note
-/// この関数は現在スタブであり、完全な実装はSubtask #35で行われる。
-#[allow(dead_code)]
-pub fn install() -> Result<()> {
-    unimplemented!("install() will be implemented in Subtask #35")
-}
-
-/// LaunchAgentをアンインストールする（スタブ - #35で実装予定）
-///
-/// # Returns
-/// アンインストール成功時はOk、失敗時はErr
-///
-/// # Note
-/// この関数は現在スタブであり、完全な実装はSubtask #35で行われる。
-#[allow(dead_code)]
-pub fn uninstall() -> Result<()> {
-    unimplemented!("uninstall() will be implemented in Subtask #35")
 }
 
 /// LaunchAgentがインストールされているか確認する
