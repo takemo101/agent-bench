@@ -159,7 +159,7 @@ mod tests {
 
     #[test]
     fn test_default_label_constant() {
-        assert_eq!(DEFAULT_LABEL, "com.example.pomodoro");
+        assert_eq!(DEFAULT_LABEL, "com.github.takemo101.pomodoro");
     }
 
     #[test]
