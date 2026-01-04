@@ -1,4 +1,4 @@
-use clap::{Parser, Subcommand, Args};
+use clap::{Args, Parser, Subcommand};
 
 /// Pomodoro Timer CLI
 #[derive(Parser, Debug)]
@@ -12,7 +12,7 @@ use clap::{Parser, Subcommand, Args};
 pub struct Cli {
     #[command(subcommand)]
     pub command: Commands,
-    
+
     /// 詳細ログを出力
     #[arg(short, long, global = true)]
     pub verbose: bool,
@@ -23,29 +23,29 @@ pub struct Cli {
 pub enum Commands {
     /// タイマーを開始
     Start(StartArgs),
-    
+
     /// タイマーを一時停止
     Pause,
-    
+
     /// タイマーを再開
     Resume,
-    
+
     /// タイマーを停止
     Stop,
-    
+
     /// 現在のステータスを確認
     Status,
-    
+
     /// LaunchAgentをインストール（ログイン時自動起動）
     Install,
-    
+
     /// LaunchAgentをアンインストール
     Uninstall,
-    
+
     /// デーモンモードで起動（LaunchAgentから呼ばれる）
     #[command(hide = true)]
     Daemon,
-    
+
     /// シェル補完スクリプトを生成
     Completions {
         /// シェルの種類
@@ -60,27 +60,27 @@ pub struct StartArgs {
     /// 作業時間（分）
     #[arg(short, long, default_value = "25", value_parser = clap::value_parser!(u32).range(1..=120))]
     pub work: u32,
-    
+
     /// 短い休憩時間（分）
     #[arg(short = 'b', long = "break", default_value = "5", value_parser = clap::value_parser!(u32).range(1..=60))]
     pub break_time: u32,
-    
+
     /// 長い休憩時間（分）
     #[arg(short, long, default_value = "15", value_parser = clap::value_parser!(u32).range(1..=60))]
     pub long_break: u32,
-    
+
     /// タスク名
     #[arg(short, long, value_parser = validate_task_name)]
     pub task: Option<String>,
-    
+
     /// 自動サイクル（休憩後に自動的に次の作業を開始）
     #[arg(short, long)]
     pub auto_cycle: bool,
-    
+
     /// フォーカスモード連携（作業中にフォーカスモードON）
     #[arg(short, long)]
     pub focus_mode: bool,
-    
+
     /// 通知音を無効化
     #[arg(long)]
     pub no_sound: bool,
@@ -106,7 +106,7 @@ mod tests {
     fn test_parse_start_command_default() {
         let args = vec!["pomodoro", "start"];
         let cli = Cli::try_parse_from(args).unwrap();
-        
+
         match cli.command {
             Commands::Start(start_args) => {
                 assert_eq!(start_args.work, 25);
@@ -123,9 +123,17 @@ mod tests {
 
     #[test]
     fn test_parse_start_command_with_args() {
-        let args = vec!["pomodoro", "start", "--work", "30", "--task", "テスト", "--auto-cycle"];
+        let args = vec![
+            "pomodoro",
+            "start",
+            "--work",
+            "30",
+            "--task",
+            "テスト",
+            "--auto-cycle",
+        ];
         let cli = Cli::try_parse_from(args).unwrap();
-        
+
         match cli.command {
             Commands::Start(start_args) => {
                 assert_eq!(start_args.work, 30);
