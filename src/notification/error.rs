@@ -10,6 +10,8 @@ pub enum NotificationError {
     UnsignedBinary,
     InitializationFailed(String),
     InvalidInput(String),
+    /// アプリバンドルコンテキストがない（CLI直接実行時）
+    NoBundleContext,
 }
 
 impl fmt::Display for NotificationError {
@@ -35,6 +37,12 @@ impl fmt::Display for NotificationError {
             }
             NotificationError::InvalidInput(msg) => {
                 write!(f, "無効な入力: {}", msg)
+            }
+            NotificationError::NoBundleContext => {
+                write!(
+                    f,
+                    "アプリバンドルコンテキストがありません。通知機能は無効です"
+                )
             }
         }
     }

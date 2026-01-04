@@ -30,7 +30,7 @@ pub struct NotificationManager {
 
 impl NotificationManager {
     pub fn new(mtm: MainThreadMarker) -> Result<Self, NotificationError> {
-        let center = NotificationCenter::shared();
+        let center = NotificationCenter::try_shared()?;
 
         let (auth_tx, auth_rx) = channel();
         center.request_authorization(auth_tx);
