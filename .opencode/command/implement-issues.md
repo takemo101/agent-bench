@@ -1400,6 +1400,47 @@ container-use_environment_run_cmd(command="npx flyway migrate")
 
 他領域への影響がある場合は [申し送り処理ガイド](../skill/handover-process.md) に従う。
 
+### 6.5. 実装完了自己チェック ⚠️ 必須
+
+品質レビューに進む前に、以下の自己チェックを行うこと。
+
+#### 1. TODO/unimplemented 残存チェック
+コード内に未実装を示すマクロやコメントが残っていないか確認する。
+
+```python
+# 未実装マクロの検出
+container-use_environment_run_cmd(
+    command="grep -r 'todo!\\|unimplemented!' src/"
+)
+# コメントのTODO検出（意図的なものは除外）
+container-use_environment_run_cmd(
+    command="grep -r 'TODO' src/"
+)
+```
+
+**アクション**:
+- `todo!`, `unimplemented!` が見つかった場合 → **実装して解消**するか、解消できない場合はIssueを作成してリンクする。
+- 意図的なTODOコメントの場合 → Issue番号を付記する (`// TODO(#123): ...`)。
+
+#### 2. Smoke Test (起動確認)
+実装した機能が実際に動作するか、バイナリを起動して確認する。
+テストが通っても、`main`関数がつながっていなければ意味がない。
+
+```python
+# ヘルプ表示確認
+container-use_environment_run_cmd(command="cargo run -- --help")
+
+# バージョン表示確認
+container-use_environment_run_cmd(command="cargo run -- --version")
+
+# サブコマンドの簡易実行（例）
+container-use_environment_run_cmd(command="cargo run -- status")
+```
+
+**アクション**:
+- 起動に失敗した場合（パニック、エラー） → **修正必須**。
+- エラーメッセージが適切に出るか確認。
+
 ### 7. 品質レビュー ⚠️ 必須
 
 > **⚠️ 重要**: PR作成前に必ず品質レビューを実行すること。スキップ厳禁。
