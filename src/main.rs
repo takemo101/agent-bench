@@ -118,9 +118,20 @@ async fn main() -> Result<()> {
             // SoundPlayerの初期化
             let sound_player = pomodoro::sound::create_sound_player(false);
 
+            // タイマーティッカー（1秒間隔でカウントダウン）
+            let mut ticker = pomodoro::daemon::TimerEngine::create_ticker();
+
             // メインループ
             loop {
                 tokio::select! {
+                    // ティック処理（残り時間の減算）
+                    _ = ticker.tick() => {
+                        let mut engine_guard = engine.lock().await;
+                        if let Err(e) = engine_guard.process_tick() {
+                            eprintln!("Failed to process tick: {}", e);
+                        }
+                    }
+
                     // IPCリクエスト処理
                     result = server.accept() => {
                         match result {
