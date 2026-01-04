@@ -5,6 +5,7 @@
 pub mod cli;
 pub mod daemon;
 pub mod focus;
+pub mod launchagent;
 pub mod menubar;
 pub mod notification;
 pub mod sound;
