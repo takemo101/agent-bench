@@ -15,7 +15,10 @@ use tokio::net::UnixStream;
 use tokio::sync::{mpsc, Mutex};
 
 /// テスト用エンジンを作成
-fn create_test_engine() -> (Arc<Mutex<TimerEngine>>, mpsc::UnboundedReceiver<pomodoro::daemon::TimerEvent>) {
+fn create_test_engine() -> (
+    Arc<Mutex<TimerEngine>>,
+    mpsc::UnboundedReceiver<pomodoro::daemon::TimerEvent>,
+) {
     let (tx, rx) = mpsc::unbounded_channel();
     let config = PomodoroConfig::default();
     let engine = Arc::new(Mutex::new(TimerEngine::new(config, tx)));
@@ -50,7 +53,9 @@ async fn test_ipc_start_timer() {
     let mut stream = server.accept().await.unwrap();
     let request = IpcServer::receive_request(&mut stream).await.unwrap();
     let response = handle_request(request, engine.clone()).await;
-    IpcServer::send_response(&mut stream, &response).await.unwrap();
+    IpcServer::send_response(&mut stream, &response)
+        .await
+        .unwrap();
 
     // レスポンス検証
     let client_response = client_handle.await.unwrap();
@@ -85,7 +90,10 @@ async fn test_ipc_pause_timer() {
     let client_handle = tokio::spawn(async move {
         tokio::time::sleep(Duration::from_millis(50)).await;
         let mut stream = UnixStream::connect(&client_path).await.unwrap();
-        stream.write_all(r#"{"command":"pause"}"#.as_bytes()).await.unwrap();
+        stream
+            .write_all(r#"{"command":"pause"}"#.as_bytes())
+            .await
+            .unwrap();
 
         let mut buffer = vec![0u8; 4096];
         let n = stream.read(&mut buffer).await.unwrap();
@@ -96,7 +104,9 @@ async fn test_ipc_pause_timer() {
     let mut stream = server.accept().await.unwrap();
     let request = IpcServer::receive_request(&mut stream).await.unwrap();
     let response = handle_request(request, engine.clone()).await;
-    IpcServer::send_response(&mut stream, &response).await.unwrap();
+    IpcServer::send_response(&mut stream, &response)
+        .await
+        .unwrap();
 
     // レスポンス検証
     let client_response = client_handle.await.unwrap();
@@ -130,7 +140,10 @@ async fn test_ipc_status() {
     let client_handle = tokio::spawn(async move {
         tokio::time::sleep(Duration::from_millis(50)).await;
         let mut stream = UnixStream::connect(&client_path).await.unwrap();
-        stream.write_all(r#"{"command":"status"}"#.as_bytes()).await.unwrap();
+        stream
+            .write_all(r#"{"command":"status"}"#.as_bytes())
+            .await
+            .unwrap();
 
         let mut buffer = vec![0u8; 4096];
         let n = stream.read(&mut buffer).await.unwrap();
@@ -141,7 +154,9 @@ async fn test_ipc_status() {
     let mut stream = server.accept().await.unwrap();
     let request = IpcServer::receive_request(&mut stream).await.unwrap();
     let response = handle_request(request, engine.clone()).await;
-    IpcServer::send_response(&mut stream, &response).await.unwrap();
+    IpcServer::send_response(&mut stream, &response)
+        .await
+        .unwrap();
 
     // レスポンス検証
     let client_response = client_handle.await.unwrap();
@@ -184,9 +199,10 @@ async fn test_ipc_command_sequence() {
     // Helper: 単一リクエストを送信してレスポンスを取得
     async fn send_request(socket_path: &std::path::Path, request: &str) -> IpcResponse {
         let server = IpcServer::new(socket_path).unwrap();
-        let engine_clone = Arc::new(Mutex::new(
-            TimerEngine::new(PomodoroConfig::default(), mpsc::unbounded_channel().0),
-        ));
+        let engine_clone = Arc::new(Mutex::new(TimerEngine::new(
+            PomodoroConfig::default(),
+            mpsc::unbounded_channel().0,
+        )));
 
         let client_path = socket_path.to_path_buf();
         let request_owned = request.to_string();

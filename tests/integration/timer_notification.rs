@@ -204,7 +204,10 @@ async fn test_work_complete_triggers_notification() {
 
     // 実際の通知連携をシミュレート
     if let Some(TimerEvent::WorkCompleted { task_name, .. }) = work_completed {
-        notification_sender.send(&format!("作業完了: {}", task_name.as_deref().unwrap_or("タスク")));
+        notification_sender.send(&format!(
+            "作業完了: {}",
+            task_name.as_deref().unwrap_or("タスク")
+        ));
     }
 
     assert_eq!(notification_sender.notification_count(), 1);
@@ -310,7 +313,9 @@ async fn test_focus_mode_failure_fallback() {
     let focus_controller = MockFocusModeController::new(true); // 失敗をシミュレート
 
     // タイマー開始
-    engine.start(Some("フォールバックテスト".to_string())).unwrap();
+    engine
+        .start(Some("フォールバックテスト".to_string()))
+        .unwrap();
     let _ = rx.try_recv(); // WorkStarted
 
     // フォーカスモード有効化を試みる（失敗する）
@@ -352,10 +357,7 @@ async fn test_work_complete_plays_sound() {
     assert!(work_completed.is_some());
 
     // サウンド再生をシミュレート
-    sound_player
-        .play(&SoundSource::Embedded)
-        .await
-        .unwrap();
+    sound_player.play(&SoundSource::Embedded).await.unwrap();
 
     assert_eq!(sound_player.play_count(), 1);
 }
