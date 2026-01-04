@@ -140,8 +140,9 @@ impl PomodoroLaunchAgent {
         plist::to_writer_xml(&mut buf, self)
             .map_err(|e| LaunchAgentError::PlistSerialization(e.to_string()))?;
 
-        String::from_utf8(buf)
-            .map_err(|e| LaunchAgentError::PlistSerialization(format!("UTF-8 conversion failed: {}", e)))
+        String::from_utf8(buf).map_err(|e| {
+            LaunchAgentError::PlistSerialization(format!("UTF-8 conversion failed: {}", e))
+        })
     }
 
     /// XML文字列からPlist構造体を復元
@@ -172,17 +173,24 @@ mod tests {
 
     #[test]
     fn test_new_creates_valid_plist() {
-        let plist = PomodoroLaunchAgent::new(
-            "/usr/local/bin/pomodoro",
-            "/Users/test/.pomodoro/logs",
-        );
+        let plist =
+            PomodoroLaunchAgent::new("/usr/local/bin/pomodoro", "/Users/test/.pomodoro/logs");
 
         assert_eq!(plist.label, "com.example.pomodoro");
-        assert_eq!(plist.program_arguments, vec!["/usr/local/bin/pomodoro", "daemon"]);
+        assert_eq!(
+            plist.program_arguments,
+            vec!["/usr/local/bin/pomodoro", "daemon"]
+        );
         assert!(plist.run_at_load);
         assert!(plist.keep_alive);
-        assert_eq!(plist.standard_out_path, "/Users/test/.pomodoro/logs/stdout.log");
-        assert_eq!(plist.standard_error_path, "/Users/test/.pomodoro/logs/stderr.log");
+        assert_eq!(
+            plist.standard_out_path,
+            "/Users/test/.pomodoro/logs/stdout.log"
+        );
+        assert_eq!(
+            plist.standard_error_path,
+            "/Users/test/.pomodoro/logs/stderr.log"
+        );
         assert!(plist.working_directory.is_none());
         assert!(plist.environment_variables.is_none());
     }
@@ -217,18 +225,16 @@ mod tests {
 
     #[test]
     fn test_without_keep_alive() {
-        let plist = PomodoroLaunchAgent::new("/usr/local/bin/pomodoro", "/tmp/logs")
-            .without_keep_alive();
+        let plist =
+            PomodoroLaunchAgent::new("/usr/local/bin/pomodoro", "/tmp/logs").without_keep_alive();
 
         assert!(!plist.keep_alive);
     }
 
     #[test]
     fn test_to_xml_generates_valid_xml() {
-        let plist = PomodoroLaunchAgent::new(
-            "/usr/local/bin/pomodoro",
-            "/Users/test/.pomodoro/logs",
-        );
+        let plist =
+            PomodoroLaunchAgent::new("/usr/local/bin/pomodoro", "/Users/test/.pomodoro/logs");
 
         let xml = plist.to_xml().unwrap();
 
@@ -274,10 +280,8 @@ mod tests {
 
     #[test]
     fn test_from_xml_roundtrip() {
-        let original = PomodoroLaunchAgent::new(
-            "/usr/local/bin/pomodoro",
-            "/Users/test/.pomodoro/logs",
-        );
+        let original =
+            PomodoroLaunchAgent::new("/usr/local/bin/pomodoro", "/Users/test/.pomodoro/logs");
 
         let xml = original.to_xml().unwrap();
         let parsed = PomodoroLaunchAgent::from_xml(&xml).unwrap();

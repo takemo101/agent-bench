@@ -120,18 +120,20 @@ mod tests {
     #[test]
     fn test_get_plist_path() {
         let result = get_plist_path();
-        
+
         // May fail if home directory is not set (e.g., in some CI environments)
         if let Ok(path) = result {
             assert!(path.to_string_lossy().contains("Library/LaunchAgents"));
-            assert!(path.to_string_lossy().contains("com.example.pomodoro.plist"));
+            assert!(path
+                .to_string_lossy()
+                .contains("com.example.pomodoro.plist"));
         }
     }
 
     #[test]
     fn test_get_log_dir() {
         let result = get_log_dir();
-        
+
         if let Ok(path) = result {
             assert!(path.to_string_lossy().contains(".pomodoro/logs"));
         }
@@ -140,7 +142,7 @@ mod tests {
     #[test]
     fn test_get_launch_agents_dir() {
         let result = get_launch_agents_dir();
-        
+
         if let Ok(path) = result {
             assert!(path.to_string_lossy().contains("Library/LaunchAgents"));
         }
@@ -162,24 +164,20 @@ mod tests {
 
     #[test]
     fn test_plist_creation() {
-        let plist = PomodoroLaunchAgent::new(
-            "/usr/local/bin/pomodoro",
-            "/Users/test/.pomodoro/logs",
-        );
-        
+        let plist =
+            PomodoroLaunchAgent::new("/usr/local/bin/pomodoro", "/Users/test/.pomodoro/logs");
+
         assert_eq!(plist.label, DEFAULT_LABEL);
     }
 
     #[test]
     fn test_plist_xml_generation() {
-        let plist = PomodoroLaunchAgent::new(
-            "/usr/local/bin/pomodoro",
-            "/Users/test/.pomodoro/logs",
-        );
-        
+        let plist =
+            PomodoroLaunchAgent::new("/usr/local/bin/pomodoro", "/Users/test/.pomodoro/logs");
+
         let xml = plist.to_xml();
         assert!(xml.is_ok());
-        
+
         let xml_str = xml.unwrap();
         assert!(xml_str.contains("<plist"));
         assert!(xml_str.contains("com.example.pomodoro"));

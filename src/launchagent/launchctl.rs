@@ -27,7 +27,12 @@ pub fn load(plist_path: &Path) -> Result<()> {
         .arg("load")
         .arg(plist_path)
         .output()
-        .map_err(|e| LaunchAgentError::LaunchctlExecution(format!("Failed to execute 'launchctl load': {}", e)))?;
+        .map_err(|e| {
+            LaunchAgentError::LaunchctlExecution(format!(
+                "Failed to execute 'launchctl load': {}",
+                e
+            ))
+        })?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -58,11 +63,19 @@ pub fn unload(plist_path: &Path) -> Result<()> {
         .arg("unload")
         .arg(plist_path)
         .output()
-        .map_err(|e| LaunchAgentError::LaunchctlExecution(format!("Failed to execute 'launchctl unload': {}", e)))?;
+        .map_err(|e| {
+            LaunchAgentError::LaunchctlExecution(format!(
+                "Failed to execute 'launchctl unload': {}",
+                e
+            ))
+        })?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        tracing::warn!("launchctl unload failed (may be already unloaded): {}", stderr);
+        tracing::warn!(
+            "launchctl unload failed (may be already unloaded): {}",
+            stderr
+        );
         return Err(LaunchAgentError::ServiceUnload(stderr.to_string()));
     }
 
@@ -91,11 +104,19 @@ pub fn bootstrap(domain: &str, plist_path: &Path) -> Result<()> {
         .arg(domain)
         .arg(plist_path)
         .output()
-        .map_err(|e| LaunchAgentError::LaunchctlExecution(format!("Failed to execute 'launchctl bootstrap': {}", e)))?;
+        .map_err(|e| {
+            LaunchAgentError::LaunchctlExecution(format!(
+                "Failed to execute 'launchctl bootstrap': {}",
+                e
+            ))
+        })?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(LaunchAgentError::ServiceLoad(format!("bootstrap failed: {}", stderr)));
+        return Err(LaunchAgentError::ServiceLoad(format!(
+            "bootstrap failed: {}",
+            stderr
+        )));
     }
 
     tracing::debug!("launchctl bootstrap succeeded for {:?}", plist_path);
@@ -121,12 +142,23 @@ pub fn bootout(domain: &str, label: &str) -> Result<()> {
         .arg("bootout")
         .arg(&service_target)
         .output()
-        .map_err(|e| LaunchAgentError::LaunchctlExecution(format!("Failed to execute 'launchctl bootout': {}", e)))?;
+        .map_err(|e| {
+            LaunchAgentError::LaunchctlExecution(format!(
+                "Failed to execute 'launchctl bootout': {}",
+                e
+            ))
+        })?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        tracing::warn!("launchctl bootout failed (may be already stopped): {}", stderr);
-        return Err(LaunchAgentError::ServiceUnload(format!("bootout failed: {}", stderr)));
+        tracing::warn!(
+            "launchctl bootout failed (may be already stopped): {}",
+            stderr
+        );
+        return Err(LaunchAgentError::ServiceUnload(format!(
+            "bootout failed: {}",
+            stderr
+        )));
     }
 
     tracing::debug!("launchctl bootout succeeded for {}", service_target);
@@ -149,11 +181,19 @@ pub fn list(label: &str) -> Result<String> {
         .arg("list")
         .arg(label)
         .output()
-        .map_err(|e| LaunchAgentError::LaunchctlExecution(format!("Failed to execute 'launchctl list': {}", e)))?;
+        .map_err(|e| {
+            LaunchAgentError::LaunchctlExecution(format!(
+                "Failed to execute 'launchctl list': {}",
+                e
+            ))
+        })?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(LaunchAgentError::LaunchctlExecution(format!("Service not found or not running: {}", stderr)));
+        return Err(LaunchAgentError::LaunchctlExecution(format!(
+            "Service not found or not running: {}",
+            stderr
+        )));
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -215,7 +255,10 @@ mod tests {
         assert!(domain.starts_with("gui/"));
         // UID should be a number
         let uid_str = domain.strip_prefix("gui/").unwrap();
-        assert!(uid_str.parse::<u32>().is_ok(), "UID should be a valid number");
+        assert!(
+            uid_str.parse::<u32>().is_ok(),
+            "UID should be a valid number"
+        );
     }
 
     #[test]
@@ -223,7 +266,7 @@ mod tests {
         // launchctl is not available in container, so this will fail with execution error
         let path = PathBuf::from("/nonexistent/path.plist");
         let result = load(&path);
-        
+
         // Either execution error (launchctl not found) or service load error
         assert!(result.is_err());
     }
@@ -232,7 +275,7 @@ mod tests {
     fn test_unload_returns_error_on_nonexistent_path() {
         let path = PathBuf::from("/nonexistent/path.plist");
         let result = unload(&path);
-        
+
         assert!(result.is_err());
     }
 
@@ -240,21 +283,21 @@ mod tests {
     fn test_bootstrap_returns_error_on_nonexistent_path() {
         let path = PathBuf::from("/nonexistent/path.plist");
         let result = bootstrap("gui/1000", &path);
-        
+
         assert!(result.is_err());
     }
 
     #[test]
     fn test_bootout_returns_error_on_nonexistent_service() {
         let result = bootout("gui/1000", "com.nonexistent.service");
-        
+
         assert!(result.is_err());
     }
 
     #[test]
     fn test_list_returns_error_on_nonexistent_service() {
         let result = list("com.nonexistent.service");
-        
+
         assert!(result.is_err());
     }
 
@@ -263,10 +306,10 @@ mod tests {
     fn test_load_error_type() {
         let path = PathBuf::from("/nonexistent/path.plist");
         let result = load(&path);
-        
+
         match result {
-            Err(LaunchAgentError::LaunchctlExecution(_)) | 
-            Err(LaunchAgentError::ServiceLoad(_)) => (),
+            Err(LaunchAgentError::LaunchctlExecution(_))
+            | Err(LaunchAgentError::ServiceLoad(_)) => (),
             _ => panic!("Expected LaunchctlExecution or ServiceLoad error"),
         }
     }
@@ -275,10 +318,10 @@ mod tests {
     fn test_unload_error_type() {
         let path = PathBuf::from("/nonexistent/path.plist");
         let result = unload(&path);
-        
+
         match result {
-            Err(LaunchAgentError::LaunchctlExecution(_)) | 
-            Err(LaunchAgentError::ServiceUnload(_)) => (),
+            Err(LaunchAgentError::LaunchctlExecution(_))
+            | Err(LaunchAgentError::ServiceUnload(_)) => (),
             _ => panic!("Expected LaunchctlExecution or ServiceUnload error"),
         }
     }
