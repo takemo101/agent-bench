@@ -10,6 +10,16 @@ DO NOT install or use the git cli with the environment_run_cmd tool. All environ
 
 You MUST inform the user how to view your work using `container-use log <env_id>` AND `container-use checkout <env_id>`. Failure to do this will make your work inaccessible to others.
 
+### Environment Integrity Protocol
+
+If local build/test commands fail due to environment issues (e.g., wrong rustc version):
+1. **STOP**. Do NOT push to CI hoping it works there.
+2. **FIX** the environment (or switch to a Container).
+3. **VERIFY** locally.
+4. Only then, **PUSH**.
+
+**Pushing broken code to CI to test it is strictly FORBIDDEN.**
+
 ---
 
 ## When to Use Container-Use
