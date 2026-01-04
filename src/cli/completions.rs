@@ -36,7 +36,6 @@ pub fn generate_completions(shell: Shell) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Write;
 
     /// Helper to capture generated completions as string
     fn generate_completions_to_string(shell: Shell) -> String {
