@@ -16,22 +16,16 @@ use crate::types::{PomodoroConfig, TimerPhase, TimerState};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TimerEvent {
     /// 作業開始
-    WorkStarted {
-        task_name: Option<String>,
-    },
+    WorkStarted { task_name: Option<String> },
     /// 作業完了
     WorkCompleted {
         pomodoro_count: u32,
         task_name: Option<String>,
     },
     /// 休憩開始
-    BreakStarted {
-        is_long_break: bool,
-    },
+    BreakStarted { is_long_break: bool },
     /// 休憩完了
-    BreakCompleted {
-        is_long_break: bool,
-    },
+    BreakCompleted { is_long_break: bool },
     /// 一時停止
     Paused,
     /// 再開
@@ -39,9 +33,7 @@ pub enum TimerEvent {
     /// 停止
     Stopped,
     /// ティック（1秒経過）
-    Tick {
-        remaining_seconds: u32,
-    },
+    Tick { remaining_seconds: u32 },
 }
 
 /// タイマーエンジン
@@ -527,7 +519,9 @@ mod tests {
         let break_started = rx.try_recv().unwrap();
         assert_eq!(
             break_started,
-            TimerEvent::BreakStarted { is_long_break: true }
+            TimerEvent::BreakStarted {
+                is_long_break: true
+            }
         );
     }
 
