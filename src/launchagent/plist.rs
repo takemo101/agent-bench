@@ -250,7 +250,7 @@ mod tests {
 
         // Check key elements
         assert!(xml.contains("<key>Label</key>"));
-        assert!(xml.contains("<string>com.example.pomodoro</string>"));
+        assert!(xml.contains("<string>com.github.takemo101.pomodoro</string>"));
         assert!(xml.contains("<key>ProgramArguments</key>"));
         assert!(xml.contains("<key>RunAtLoad</key>"));
         assert!(xml.contains("<true/>") || xml.contains("<true />"));
