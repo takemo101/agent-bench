@@ -8,7 +8,7 @@ authors = []
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-tokio = { version = "1.48", features = ["rt", "time", "macros", "signal", "sync", "io-util", "net"] }
+tokio = { version = "1.48", features = ["rt", "rt-multi-thread", "time", "macros", "signal", "sync", "io-util", "net"] }
 clap = { version = "4.5", features = ["derive"] }
 clap_complete = "4.5"
 serde = { version = "1.0", features = ["derive"] }
@@ -16,6 +16,7 @@ serde_json = "1.0"
 anyhow = "1.0"
 tracing = "0.1"
 tracing-subscriber = "0.3"
+colored = "2.1"
 
 [dev-dependencies]
 tempfile = "3.15"
