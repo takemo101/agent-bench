@@ -126,7 +126,7 @@ mod tests {
             assert!(path.to_string_lossy().contains("Library/LaunchAgents"));
             assert!(path
                 .to_string_lossy()
-                .contains("com.example.pomodoro.plist"));
+                .contains("com.github.takemo101.pomodoro.plist"));
         }
     }
 
