@@ -21,7 +21,7 @@ fn test_discover_system_sounds_linux_container() {
 #[test]
 fn test_get_default_source() {
     let source = SoundSource::get_default_source();
-    
+
     // On macOS (CI), system sounds exist, so we get System source
     // On Linux (container), system sounds don't exist, so we get Embedded
     match source {
