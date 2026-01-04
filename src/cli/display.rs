@@ -2,8 +2,8 @@
 //!
 //! Provides colored and formatted output for CLI commands.
 
-use colored::Colorize;
 use crate::types::IpcResponse;
+use colored::Colorize;
 
 /// Display handler for CLI output
 pub struct Display;
@@ -43,7 +43,7 @@ impl Display {
     pub fn show_status(&self, response: IpcResponse) {
         if let Some(data) = response.data {
             println!("{}", "=== タイマー状態 ===".bold());
-            
+
             if let Some(state) = data.state {
                 let state_display = match state.as_str() {
                     "working" => "作業中".green(),
@@ -55,17 +55,17 @@ impl Display {
                 };
                 println!("状態: {}", state_display);
             }
-            
+
             if let Some(remaining) = data.remaining_seconds {
                 let minutes = remaining / 60;
                 let seconds = remaining % 60;
                 println!("残り時間: {}:{:02}", minutes, seconds);
             }
-            
+
             if let Some(count) = data.pomodoro_count {
                 println!("完了ポモドーロ: {} 🍅", count);
             }
-            
+
             if let Some(task) = data.task_name {
                 println!("タスク: {}", task.cyan());
             }

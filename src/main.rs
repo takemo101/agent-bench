@@ -14,76 +14,66 @@ async fn main() -> Result<()> {
     let client = IpcClient::new();
 
     match cli.command {
-        Commands::Start(args) => {
-            match client.start(args).await {
-                Ok(response) => {
-                    if response.status == "success" {
-                        display.show_start_success(response);
-                    } else {
-                        display.show_error(&response.message);
-                    }
-                }
-                Err(e) => {
-                    display.show_error(&format!("Failed to start timer: {}", e));
+        Commands::Start(args) => match client.start(args).await {
+            Ok(response) => {
+                if response.status == "success" {
+                    display.show_start_success(response);
+                } else {
+                    display.show_error(&response.message);
                 }
             }
-        }
-        Commands::Pause => {
-            match client.pause().await {
-                Ok(response) => {
-                    if response.status == "success" {
-                        display.show_pause_success(response);
-                    } else {
-                        display.show_error(&response.message);
-                    }
-                }
-                Err(e) => {
-                    display.show_error(&format!("Failed to pause timer: {}", e));
+            Err(e) => {
+                display.show_error(&format!("Failed to start timer: {}", e));
+            }
+        },
+        Commands::Pause => match client.pause().await {
+            Ok(response) => {
+                if response.status == "success" {
+                    display.show_pause_success(response);
+                } else {
+                    display.show_error(&response.message);
                 }
             }
-        }
-        Commands::Resume => {
-            match client.resume().await {
-                Ok(response) => {
-                    if response.status == "success" {
-                        display.show_resume_success(response);
-                    } else {
-                        display.show_error(&response.message);
-                    }
-                }
-                Err(e) => {
-                    display.show_error(&format!("Failed to resume timer: {}", e));
+            Err(e) => {
+                display.show_error(&format!("Failed to pause timer: {}", e));
+            }
+        },
+        Commands::Resume => match client.resume().await {
+            Ok(response) => {
+                if response.status == "success" {
+                    display.show_resume_success(response);
+                } else {
+                    display.show_error(&response.message);
                 }
             }
-        }
-        Commands::Stop => {
-            match client.stop().await {
-                Ok(response) => {
-                    if response.status == "success" {
-                        display.show_stop_success(response);
-                    } else {
-                        display.show_error(&response.message);
-                    }
-                }
-                Err(e) => {
-                    display.show_error(&format!("Failed to stop timer: {}", e));
+            Err(e) => {
+                display.show_error(&format!("Failed to resume timer: {}", e));
+            }
+        },
+        Commands::Stop => match client.stop().await {
+            Ok(response) => {
+                if response.status == "success" {
+                    display.show_stop_success(response);
+                } else {
+                    display.show_error(&response.message);
                 }
             }
-        }
-        Commands::Status => {
-            match client.status().await {
-                Ok(response) => {
-                    if response.status == "success" {
-                        display.show_status(response);
-                    } else {
-                        display.show_error(&response.message);
-                    }
-                }
-                Err(e) => {
-                    display.show_error(&format!("Failed to get status: {}", e));
+            Err(e) => {
+                display.show_error(&format!("Failed to stop timer: {}", e));
+            }
+        },
+        Commands::Status => match client.status().await {
+            Ok(response) => {
+                if response.status == "success" {
+                    display.show_status(response);
+                } else {
+                    display.show_error(&response.message);
                 }
             }
-        }
+            Err(e) => {
+                display.show_error(&format!("Failed to get status: {}", e));
+            }
+        },
         Commands::Install => {
             // TODO: Implement LaunchAgent installation
             display.show_error("Install command not yet implemented");
