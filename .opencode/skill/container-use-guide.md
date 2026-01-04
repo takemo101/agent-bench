@@ -465,6 +465,11 @@ container-use_environment_run_cmd(
 
 ## トラブルシューティング
 
+> **障害対応・セッション復旧の詳細手順**: [container-useエージェントルール](../instructions/container-use.md) を参照
+> - Docker障害時のフォールバック手順
+> - セッション復旧プロトコル
+> - 継続プロンプトのベストプラクティス
+
 ### サービスに接続できない
 
 1. サービス名をホスト名として使用 (例: `postgres`, `redis`)
