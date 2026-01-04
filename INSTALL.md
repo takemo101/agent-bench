@@ -11,14 +11,31 @@
 
 現在、バイナリ配布前の開発段階のため、Rustの `cargo` コマンドを使用してインストールします。
 
+#### 通常のインストール
+
 ```bash
 # リポジトリのクローン
 git clone https://github.com/takemo101/agent-bench.git
 cd agent-bench
 
-# ビルドとインストール
+# ビルドとインストール (~/.cargo/bin にインストール)
 cargo install --path .
 ```
+
+#### ユニバーサルバイナリのインストール（推奨）
+
+Intel Mac と Apple Silicon Mac の両方に対応した最適化済みバイナリをインストールする場合は、`make` コマンドを使用します。
+
+```bash
+# 1. 依存関係（クロスコンパイル用ターゲット）のインストール
+# ※ 初回のみ必要です
+make install
+
+# 2. ビルドとインストール (/usr/local/bin にインストール)
+make install-local
+```
+
+> **Note**: `make install` を実行せずに `make install-local` を実行すると、`can't find crate for core` などのエラーが発生する場合があります。必ず最初に `make install` を実行してください。
 
 インストールが完了すると、`pomodoro` コマンドが利用可能になります。
 
@@ -72,6 +89,12 @@ pomodoro uninstall
 
 ### 2. バイナリの削除
 
+**cargo install でインストールした場合:**
 ```bash
 cargo uninstall pomodoro
+```
+
+**make install-local でインストールした場合:**
+```bash
+make uninstall-local
 ```
