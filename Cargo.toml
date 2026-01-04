@@ -19,6 +19,13 @@ tracing = "0.1"
 tracing-subscriber = "0.3"
 colored = "2.1"
 
+# macOS-specific dependencies for native notification system
+[target.'cfg(target_os = "macos")'.dependencies]
+block2 = "0.6"
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", features = ["NSString", "NSError", "NSSet", "NSArray", "NSObject"] }
+objc2-user-notifications = "0.3"
+
 [dev-dependencies]
 tempfile = "3.15"
 
