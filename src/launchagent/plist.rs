@@ -319,7 +319,7 @@ mod tests {
     #[test]
     fn test_default() {
         let plist = PomodoroLaunchAgent::default();
-        assert_eq!(plist.label, "com.example.pomodoro");
+        assert_eq!(plist.label, "com.github.takemo101.pomodoro");
         assert_eq!(plist.program_arguments[0], "/usr/local/bin/pomodoro");
     }
 
