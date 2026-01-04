@@ -84,10 +84,22 @@ mod tests {
     fn test_completions_contain_subcommands() {
         let output = generate_completions_to_string(Shell::Bash);
         // Should contain main subcommands
-        assert!(output.contains("start"), "Should contain 'start' subcommand");
-        assert!(output.contains("pause"), "Should contain 'pause' subcommand");
-        assert!(output.contains("resume"), "Should contain 'resume' subcommand");
+        assert!(
+            output.contains("start"),
+            "Should contain 'start' subcommand"
+        );
+        assert!(
+            output.contains("pause"),
+            "Should contain 'pause' subcommand"
+        );
+        assert!(
+            output.contains("resume"),
+            "Should contain 'resume' subcommand"
+        );
         assert!(output.contains("stop"), "Should contain 'stop' subcommand");
-        assert!(output.contains("status"), "Should contain 'status' subcommand");
+        assert!(
+            output.contains("status"),
+            "Should contain 'status' subcommand"
+        );
     }
 }
