@@ -161,6 +161,8 @@ Work is complete when ALL conditions are met:
 - [ ] Build passes (verify with `environment_run_cmd`, if applicable)
 - [ ] Tests pass (if applicable)
 - [ ] Environment Info presented (format below)
+- [ ] PR merged and Issue closed
+- [ ] Environment deleted: `container-use delete <env_id>` (after PR merge)
 
 ### Required Outputs
 
@@ -189,6 +191,7 @@ After ANY container-use session, ALWAYS provide:
 | Edit file | `environment_file_edit` |
 | Run command | `environment_run_cmd` |
 | Save progress | `environment_checkpoint` |
+| **Delete environment** | `container-use delete <env_id>` (CLI) |
 
 ### Environment Naming Convention
 
