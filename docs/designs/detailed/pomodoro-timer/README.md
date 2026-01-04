@@ -86,29 +86,29 @@ docs/designs/detailed/pomodoro-timer/
 1. **詳細設計書作成** - 8件の詳細設計書を作成完了
 2. **詳細設計書レビュー** - 10/10点で合格
 3. **テスト項目書作成** - 150+テストケースを作成
-4. **Issue計画書作成** - 15 Issues、依存関係図、マイルストーン定義完了
-5. **GitHub Issue登録** - 全15件のIssueをGitHubに登録完了
+4. **Issue計画書作成** - 16 Issues、依存関係図、マイルストーン定義完了
+5. **GitHub Issue登録** - 全16件のIssueをGitHubに登録完了
 
 ## GitHub Issues
 
 | # | タイトル | ラベル | 優先度 |
 |---|---------|--------|--------|
-| [#1](https://github.com/takemo101/agent-testing3/issues/1) | [Epic] ポモドーロタイマーCLI v0.1.0 実装 | epic | 高 |
-| [#2](https://github.com/takemo101/agent-testing3/issues/2) | [Setup] Rustプロジェクト初期化 | setup | 高 |
-| [#3](https://github.com/takemo101/agent-testing3/issues/3) | [Core] データ型定義 | core | 高 |
-| [#4](https://github.com/takemo101/agent-testing3/issues/4) | [Daemon] タイマーエンジン | daemon, core | 高 |
-| [#5](https://github.com/takemo101/agent-testing3/issues/5) | [Daemon] IPCサーバー | daemon, ipc | 高 |
-| [#6](https://github.com/takemo101/agent-testing3/issues/6) | [CLI] コマンドパーサー | cli | 高 |
-| [#7](https://github.com/takemo101/agent-testing3/issues/7) | [macOS] 通知システム | macos, notification | 高 |
-| [#8](https://github.com/takemo101/agent-testing3/issues/8) | [macOS] メニューバーUI | macos, ui | 中 |
-| [#9](https://github.com/takemo101/agent-testing3/issues/9) | [macOS] サウンド再生 | macos, audio | 低 |
-| [#10](https://github.com/takemo101/agent-testing3/issues/10) | [macOS] フォーカスモード | macos, focus | 中 |
-| [#11](https://github.com/takemo101/agent-testing3/issues/11) | [macOS] LaunchAgent | macos, launchagent | 中 |
-| [#12](https://github.com/takemo101/agent-testing3/issues/12) | [CLI] シェル補完 | cli, ux | 低 |
-| [#13](https://github.com/takemo101/agent-testing3/issues/13) | [Test] 統合テスト | test | 高 |
-| [#14](https://github.com/takemo101/agent-testing3/issues/14) | [Test] E2Eテスト | test | 中 |
-| [#15](https://github.com/takemo101/agent-testing3/issues/15) | [Docs] ドキュメント | documentation | 中 |
-| [#16](https://github.com/takemo101/agent-testing3/issues/16) | [Release] リリース | release, ci | 高 |
+| [#1](https://github.com/takemo101/agent-bench/issues/1) | [Epic] ポモドーロタイマーCLI v0.1.0 実装 | epic | 高 |
+| [#2](https://github.com/takemo101/agent-bench/issues/2) | [Setup] Rustプロジェクト初期化とCargo.toml設定 | setup | 高 |
+| [#3](https://github.com/takemo101/agent-bench/issues/3) | [Core] データ型定義（TimerState, PomodoroConfig, IPC types） | core | 高 |
+| [#4](https://github.com/takemo101/agent-bench/issues/4) | [Daemon] タイマーエンジン実装（状態遷移、カウントダウン） | daemon, core | 高 |
+| [#5](https://github.com/takemo101/agent-bench/issues/5) | [Daemon] Unix Domain Socket IPCサーバー実装 | daemon, ipc | 高 |
+| [#6](https://github.com/takemo101/agent-bench/issues/6) | [CLI] コマンドパーサーとIPCクライアント実装 | cli | 高 |
+| [#7](https://github.com/takemo101/agent-bench/issues/7) | [macOS] objc2-user-notifications による通知システム実装 | macos, notification | 高 |
+| [#8](https://github.com/takemo101/agent-bench/issues/8) | [macOS] tray-icon によるメニューバーUI実装 | macos, ui | 中 |
+| [#9](https://github.com/takemo101/agent-bench/issues/9) | [macOS] rodio によるサウンド再生実装 | macos, audio | 低 |
+| [#10](https://github.com/takemo101/agent-bench/issues/10) | [macOS] Shortcuts.app経由フォーカスモード連携 | macos, focus | 中 |
+| [#11](https://github.com/takemo101/agent-bench/issues/11) | [macOS] LaunchAgent による自動起動設定 | macos, launchagent | 中 |
+| [#12](https://github.com/takemo101/agent-bench/issues/12) | [CLI] シェル補完スクリプト生成 | cli, ux | 低 |
+| [#13](https://github.com/takemo101/agent-bench/issues/13) | [Test] コンポーネント間統合テスト | test | 高 |
+| [#14](https://github.com/takemo101/agent-bench/issues/14) | [Test] E2Eテストとパフォーマンステスト | test | 中 |
+| [#15](https://github.com/takemo101/agent-bench/issues/15) | [Docs] README、インストールガイド、使用方法 | documentation | 中 |
+| [#16](https://github.com/takemo101/agent-bench/issues/16) | [Release] CI/CDパイプライン完成とv0.1.0リリース | release, ci | 高 |
 
 ## 次のステップ
 
