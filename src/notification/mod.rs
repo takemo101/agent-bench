@@ -1,10 +1,18 @@
-//! 通知システムモジュール
-
 pub mod error;
 pub mod request;
 
+#[cfg(target_os = "macos")]
+pub mod center;
+#[cfg(target_os = "macos")]
+pub mod delegate;
+
 pub use error::NotificationError;
 pub use request::{NotificationRequest, NotificationRequestId};
+
+#[cfg(target_os = "macos")]
+pub use center::NotificationCenter;
+#[cfg(target_os = "macos")]
+pub use delegate::{NotificationActionEvent, NotificationDelegate};
 
 pub mod category_ids {
     pub const WORK_COMPLETE: &str = "WORK_COMPLETE";
