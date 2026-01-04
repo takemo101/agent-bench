@@ -5,7 +5,7 @@
 
 use anyhow::Result;
 use clap::Parser;
-use pomodoro::cli::{Cli, Commands, Display, IpcClient};
+use pomodoro::cli::{generate_completions, Cli, Commands, Display, IpcClient};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -87,8 +87,7 @@ async fn main() -> Result<()> {
             display.show_error("Daemon mode not yet implemented");
         }
         Commands::Completions { shell } => {
-            // TODO: Implement shell completions generation
-            display.show_error(&format!("Completions for {:?} not yet implemented", shell));
+            generate_completions(shell);
         }
     }
 
