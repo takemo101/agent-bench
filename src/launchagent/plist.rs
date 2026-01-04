@@ -4,11 +4,12 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::path::Path;
 
 use super::error::{LaunchAgentError, Result};
 
-/// LaunchAgentのデフォルトラベル
-pub const DEFAULT_LABEL: &str = "com.example.pomodoro";
+/// LaunchAgentのデフォルトラベル（逆ドメイン形式）
+pub const DEFAULT_LABEL: &str = "com.github.takemo101.pomodoro";
 
 /// LaunchAgent plist構造体
 ///
