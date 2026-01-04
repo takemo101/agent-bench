@@ -143,7 +143,7 @@ mod tests {
 
     #[test]
     fn test_display_default() {
-        let display = Display::default();
+        let display = Display;
         // Just ensure it can be created
         let _ = display;
     }
