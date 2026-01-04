@@ -1,5 +1,5 @@
-mod error;
 mod embedded;
+mod error;
 
 // インラインモジュール定義（ファイル数削減のため）
 pub mod source {
@@ -13,8 +13,8 @@ pub mod player {
     // 将来的な実装用
 }
 
-pub use error::SoundError;
 pub use embedded::DEFAULT_SOUND_DATA;
+pub use error::SoundError;
 pub use source::SoundSource;
 
 use async_trait::async_trait;
