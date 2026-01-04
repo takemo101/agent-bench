@@ -1,8 +1,10 @@
 //! CLI module for pomodoro timer command-line interface
 pub mod commands;
+pub mod completions;
 pub mod display;
 pub mod ipc;
 
 pub use commands::{Cli, Commands, StartArgs};
+pub use completions::generate_completions;
 pub use display::Display;
 pub use ipc::IpcClient;
