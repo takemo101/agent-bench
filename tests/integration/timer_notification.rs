@@ -350,15 +350,12 @@ async fn integration_event_driven_flow() {
     engine.start(Some("統合テスト".to_string())).unwrap();
 
     while let Ok(event) = rx.try_recv() {
-        match event {
-            TimerEvent::WorkStarted { task_name } => {
-                focus_controller.enable().unwrap();
-                notification_sender.send(&format!(
-                    "作業開始: {}",
-                    task_name.as_deref().unwrap_or("タスク")
-                ));
-            }
-            _ => {}
+        if let TimerEvent::WorkStarted { task_name } = event {
+            focus_controller.enable().unwrap();
+            notification_sender.send(&format!(
+                "作業開始: {}",
+                task_name.as_deref().unwrap_or("タスク")
+            ));
         }
     }
 
