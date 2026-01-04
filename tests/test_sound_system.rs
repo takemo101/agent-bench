@@ -1,5 +1,4 @@
 use pomodoro::sound::{SoundSource, RodioSoundPlayer, SoundPlayer};
-use std::path::PathBuf;
 
 #[test]
 fn test_discover_system_sounds_linux_container() {
