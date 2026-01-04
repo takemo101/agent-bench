@@ -2,8 +2,8 @@
 //!
 //! メニューバーアイコン管理機能のテスト
 
-use pomodoro_timer::menubar::icon::IconManager;
-use pomodoro_timer::types::{PomodoroConfig, TimerPhase, TimerState};
+use pomodoro::menubar::icon::IconManager;
+use pomodoro::types::{PomodoroConfig, TimerPhase, TimerState};
 
 // =============================================================================
 // generate_title テスト
