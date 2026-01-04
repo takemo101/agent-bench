@@ -6,7 +6,7 @@ use anyhow::{Context, Result};
 use std::path::PathBuf;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::UnixStream;
-use tokio::time::{timeout, Duration};
+use tokio::time::{sleep, timeout, Duration};
 
 use crate::cli::commands::StartArgs;
 use crate::types::{IpcRequest, IpcResponse, StartParams};
@@ -16,6 +16,12 @@ const CONNECTION_TIMEOUT_SECS: u64 = 5;
 
 /// リクエストバッファサイズ
 const REQUEST_BUFFER_SIZE: usize = 4096;
+
+/// リトライ初期待機時間（ミリ秒）
+const INITIAL_RETRY_DELAY_MS: u64 = 100;
+
+/// リトライ最大待機時間（ミリ秒）
+const MAX_RETRY_DELAY_MS: u64 = 2000;
 
 /// IPCクライアント
 ///
@@ -37,6 +43,140 @@ impl IpcClient {
     pub fn with_socket_path(socket_path: PathBuf) -> Self {
         Self { socket_path }
     }
+
+    /// リクエストを送信
+    ///
+    /// デーモンサーバーにリクエストを送信し、レスポンスを受信する。
+    /// タイムアウトは5秒。
+    ///
+    /// # Arguments
+    ///
+    /// * `req` - 送信するリクエスト
+    ///
+    /// # Returns
+    ///
+    /// サーバーからのレスポンス
+    ///
+    /// # Errors
+    ///
+    /// - ソケット接続に失敗した場合
+    /// - リクエスト送信に失敗した場合
+    /// - レスポンス受信に失敗した場合
+    /// - タイムアウトした場合
+    pub async fn send_request(&self, req: IpcRequest) -> Result<IpcResponse> {
+        // タイムアウト付きで実行
+        timeout(
+            Duration::from_secs(CONNECTION_TIMEOUT_SECS),
+            self.send_request_internal(req),
+        )
+        .await
+        .context("Request timed out")?
+    }
+
+    /// リクエストを送信（内部実装）
+    async fn send_request_internal(&self, req: IpcRequest) -> Result<IpcResponse> {
+        // ソケットに接続
+        let mut stream = UnixStream::connect(&self.socket_path)
+            .await
+            .context("Failed to connect to daemon")?;
+
+        // リクエストをJSON形式でシリアライズ
+        let request_json = serde_json::to_string(&req).context("Failed to serialize request")?;
+
+        // リクエストを送信
+        stream
+            .write_all(request_json.as_bytes())
+            .await
+            .context("Failed to send request")?;
+
+        // レスポンスを受信
+        let mut buffer = vec![0u8; REQUEST_BUFFER_SIZE];
+        let n = stream
+            .read(&mut buffer)
+            .await
+            .context("Failed to read response")?;
+
+        // レスポンスをデシリアライズ
+        let response: IpcResponse = serde_json::from_slice(&buffer[..n])
+            .context("Failed to deserialize response")?;
+
+        Ok(response)
+    }
+
+    /// リトライ付きリクエスト送信
+    ///
+    /// 指定された回数までリトライを行う。
+    /// リトライ間隔は指数バックオフ（100ms → 200ms → 400ms → ... 最大2秒）。
+    ///
+    /// # Arguments
+    ///
+    /// * `req` - 送信するリクエスト
+    /// * `max_retries` - 最大リトライ回数
+    ///
+    /// # Returns
+    ///
+    /// サーバーからのレスポンス
+    pub async fn send_request_with_retry(
+        &self,
+        req: IpcRequest,
+        max_retries: u32,
+    ) -> Result<IpcResponse> {
+        let mut last_error = None;
+        let mut delay_ms = INITIAL_RETRY_DELAY_MS;
+
+        for attempt in 0..=max_retries {
+            match self.send_request(req.clone()).await {
+                Ok(response) => return Ok(response),
+                Err(e) => {
+                    last_error = Some(e);
+                    
+                    // 最後の試行でなければ待機
+                    if attempt < max_retries {
+                        sleep(Duration::from_millis(delay_ms)).await;
+                        
+                        // 指数バックオフ（最大2秒）
+                        delay_ms = (delay_ms * 2).min(MAX_RETRY_DELAY_MS);
+                    }
+                }
+            }
+        }
+
+        Err(last_error.unwrap())
+    }
+
+    /// タイマーを開始
+    pub async fn start(&self, args: StartArgs) -> Result<IpcResponse> {
+        let params = StartParams {
+            work_minutes: Some(args.work),
+            break_minutes: Some(args.break_time),
+            long_break_minutes: Some(args.long_break),
+            task_name: args.task,
+            auto_cycle: Some(args.auto_cycle),
+            focus_mode: Some(args.focus_mode),
+        };
+
+        self.send_request(IpcRequest::Start { params }).await
+    }
+
+    /// タイマーを一時停止
+    pub async fn pause(&self) -> Result<IpcResponse> {
+        self.send_request(IpcRequest::Pause).await
+    }
+
+    /// タイマーを再開
+    pub async fn resume(&self) -> Result<IpcResponse> {
+        self.send_request(IpcRequest::Resume).await
+    }
+
+    /// タイマーを停止
+    pub async fn stop(&self) -> Result<IpcResponse> {
+        self.send_request(IpcRequest::Stop).await
+    }
+
+    /// ステータスを取得
+    pub async fn status(&self) -> Result<IpcResponse> {
+        self.send_request(IpcRequest::Status).await
+    }
 }
 
 impl Default for IpcClient {
@@ -49,7 +189,13 @@ impl Default for IpcClient {
 ///
 /// `~/.pomodoro/pomodoro.sock` を返す。
 fn get_socket_path() -> PathBuf {
-    todo!("Not implemented yet")
+    let home = std::env::var("HOME")
+        .or_else(|_| std::env::var("USERPROFILE"))
+        .unwrap_or_else(|_| ".".to_string());
+    
+    PathBuf::from(home)
+        .join(".pomodoro")
+        .join("pomodoro.sock")
 }
 
 // ============================================================================
@@ -59,7 +205,7 @@ fn get_socket_path() -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{ResponseData, StartParams};
+    use crate::types::ResponseData;
     use std::path::Path;
     use tempfile::TempDir;
     use tokio::net::UnixListener;
@@ -148,8 +294,8 @@ mod tests {
         let result = client.send_request(IpcRequest::Status).await;
         
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("timeout") || 
-                result.unwrap_err().to_string().contains("timed out"));
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("timeout") || err_msg.contains("timed out"));
         
         server_handle.abort();
     }
