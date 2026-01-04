@@ -1,5 +1,4 @@
 use pomodoro::menubar::TrayIconManager;
-use pomodoro::types::TimerState;
 
 #[test]
 fn test_tray_icon_manager_structure() {
@@ -7,7 +6,7 @@ fn test_tray_icon_manager_structure() {
     // It will panic because implementation is stubbed with unimplemented!().
     
     // Test: new() exists
-    let manager = std::panic::catch_unwind(|| {
+    let _manager = std::panic::catch_unwind(|| {
         TrayIconManager::new()
     });
     
