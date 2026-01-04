@@ -1,6 +1,6 @@
 ---
 description: 既存コードを分析して詳細設計書を自動生成
-argument-hint: <target-path> (例: src/notification/)
+argument-hint: "<target-path> (例: src/notification/)"
 ---
 
 # リバースエンジニアリング・ワークフロー (v1.2)
