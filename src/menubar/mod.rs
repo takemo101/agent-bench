@@ -1,6 +1,6 @@
+pub mod event;
 pub mod icon;
 pub mod menu;
-pub mod event;
 
 use thiserror::Error;
 use tray_icon::TrayIcon;
