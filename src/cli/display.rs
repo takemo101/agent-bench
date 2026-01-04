@@ -14,6 +14,11 @@ impl Display {
         Self
     }
 
+    /// Show success message
+    pub fn show_success(&self, msg: &str) {
+        println!("{} {}", "✓".green().bold(), msg.green());
+    }
+
     /// Show start success message
     pub fn show_start_success(&self, response: IpcResponse) {
         println!("{} {}", "✓".green().bold(), response.message.green());
