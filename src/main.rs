@@ -3,9 +3,6 @@
 //! macOS専用のポモドーロタイマーCLIツール。
 //! デーモンプロセスとして動作し、Unix Domain Socket経由でCLIコマンドを受け付ける。
 
-pub mod daemon;
-pub mod types;
-
 fn main() {
     println!("pomodoro v{}", env!("CARGO_PKG_VERSION"));
 }
