@@ -25,7 +25,7 @@ fn test_tray_icon_manager_instantiation() {
 fn test_tray_icon_manager_lifecycle() {
     if let Ok(mut manager) = TrayIconManager::new() {
         // Initialize (might fail on CI due to headless environment)
-        if let Err(_) = manager.initialize() {
+        if manager.initialize().is_err() {
             return;
         }
 
