@@ -89,7 +89,7 @@ impl MenuBuilder {
         if let Some(task_name) = &state.task_name {
             let status = MenuItem::with_id(
                 MenuId::new("status_task"),
-                &format!("作業中: {}", task_name),
+                format!("作業中: {}", task_name),
                 false,
                 None,
             );
@@ -102,7 +102,7 @@ impl MenuBuilder {
         let remaining_seconds = state.remaining_seconds % 60;
         let remaining = MenuItem::with_id(
             MenuId::new("status_time"),
-            &format!(
+            format!(
                 "残り時間: {:02}:{:02}",
                 remaining_minutes, remaining_seconds
             ),
@@ -115,7 +115,7 @@ impl MenuBuilder {
 
         let count = MenuItem::with_id(
             MenuId::new("status_count"),
-            &format!("ポモドーロ: #{}", state.pomodoro_count),
+            format!("ポモドーロ: #{}", state.pomodoro_count),
             false,
             None,
         );
