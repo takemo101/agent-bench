@@ -21,11 +21,23 @@ fn test_discover_system_sounds_linux_container() {
 #[test]
 fn test_get_default_source() {
     let source = SoundSource::get_default_source();
+    
+    // On macOS (CI), system sounds exist, so we get System source
+    // On Linux (container), system sounds don't exist, so we get Embedded
     match source {
+        SoundSource::System { name, path } => {
+            // On macOS, we should get Glass.aiff or Ping.aiff
+            assert!(
+                name == "Glass" || name == "Ping",
+                "Expected Glass or Ping, got: {}",
+                name
+            );
+            assert!(path.exists(), "Sound file should exist: {:?}", path);
+        }
         SoundSource::Embedded { name } => {
+            // On Linux/container, we fallback to embedded
             assert_eq!(name, "default");
         }
-        _ => panic!("Default should be Embedded when system sounds missing"),
     }
 }
 
