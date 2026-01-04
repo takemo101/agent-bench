@@ -266,6 +266,7 @@ docs/
 | ドキュメント | 説明 | 参照タイミング |
 |-------------|------|---------------|
 | [container-use環境構築](./skill/container-use-guide.md) | コンテナ環境での開発・テスト手順 | **実装開始時（必須）** |
+| [container-useエージェントルール](./instructions/container-use.md) | 障害対応・セッション復旧・フォールバック手順 | **障害発生時・セッション再開時** |
 | [レビューガイド](./skill/review-guidelines.md) | DB/セキュリティ/アーキテクチャの詳細レビュー観点 | レビュー時 |
 | [コード品質ルール](./skill/code-quality-rules.md) | 500行ルール、固定アーキテクチャ、命名規則 | 実装時 |
 | [インフラワークフロー](./skill/infra-workflow.md) | Terraform/Docker Composeの設計・実装フロー | インフラ構築時 |
@@ -372,6 +373,7 @@ container-use_environment_run_cmd(command="npm test")
 
 | 日付 | バージョン | 変更内容 |
 |:---|:---|:---|
+| 2026-01-04 | 3.9.0 | **障害復旧・セッション管理強化**: Docker障害時フォールバック手順、セッション復旧プロトコル、継続プロンプトベストプラクティスを `instructions/container-use.md` に追加 |
 | 2026-01-04 | 3.8.0 | **トークン最適化強化**: 結果最小化ルール（セクション14）追加、oh-my-opencode設定でリカバリーフック有効化 |
 | 2026-01-03 | 3.7.0 | **ドキュメント品質向上**: detailed-design-workflowに全体フロー図追加、request-design-fixにサーキットブレーカー・エラーハンドリング・擬似コード追加 |
 | 2026-01-03 | 3.6.0 | **MCPツール継承修正**: 並列処理で `task` → `background_task` に変更。`task` ではMCPツール（container-use）がサブエージェントに継承されない問題を解決 |

@@ -1,8 +1,10 @@
 # Container-Use Agent Rules
 
-## Core Rules (MANDATORY - NO EXCEPTIONS)
+## Core Rules (MANDATORY)
 
 ALWAYS use ONLY Environments for ANY and ALL file, code, or shell operations—NO EXCEPTIONS—even for simple or generic requests.
+
+**Note**: See "When to Use Container-Use" section for the only permitted exception (`.opencode/` workflow documentation).
 
 DO NOT install or use the git cli with the environment_run_cmd tool. All environment tools will handle git operations for you. Changing ".git" yourself will compromise the integrity of your environment.
 
@@ -20,6 +22,11 @@ You MUST inform the user how to view your work using `container-use log <env_id>
 | Refactoring | Reading existing code |
 
 **Decision criteria**: Will you modify files? → YES → Container-Use
+
+**Exception**: `.opencode/` workflow documentation (instructions, skills, agents) may be edited directly on host when:
+- Changes are documentation-only (no code impact)
+- Quick iteration is needed for workflow improvements
+- Docker is unavailable and user approves direct editing
 
 ---
 
@@ -141,6 +148,143 @@ NEVER silently switch to non-container-use operations.
 
 ---
 
+## Docker Resource Failures (Fallback Protocol)
+
+When Docker itself fails (disk space, daemon issues, resource exhaustion):
+
+### Diagnosis Commands
+
+```bash
+# Check Docker disk usage
+docker system df
+
+# Check available disk space
+df -h
+
+# Check Docker daemon status
+docker info
+```
+
+### Fallback Decision Tree
+
+| Condition | Action |
+|-----------|--------|
+| Disk space < 10GB | Run `docker system prune -af` and retry |
+| Docker daemon not running | Start Docker Desktop, wait 30s, retry |
+| After prune still failing | **User decision required** |
+
+### User Escalation (MANDATORY)
+
+When container-use cannot function, you MUST:
+
+1. **Report the failure clearly**:
+   ```
+   ⚠️ Container-use is unavailable due to: [specific error]
+   
+   Attempted recovery:
+   - [action 1]: [result]
+   - [action 2]: [result]
+   ```
+
+2. **Present options**:
+   ```
+   Options:
+   A) Wait for Docker recovery (manual intervention needed)
+   B) Proceed with direct host operations (breaks isolation)
+   C) Abort and resume later
+   
+   Which would you prefer?
+   ```
+
+3. **If user chooses direct host operations**:
+   - Document clearly in commit message: `[non-containerized]`
+   - Add warning comment at top of changed files:
+     ```
+     // ⚠️ WARNING: Modified outside container-use (Docker unavailable)
+     // Verify in container environment before merging. Ref: Issue #XXX
+     ```
+   - Create follow-up issue to verify changes in container
+
+**CRITICAL**: Never silently fall back. Always get explicit user approval.
+
+---
+
+## Session Recovery Protocol
+
+When resuming work from a previous session (e.g., after crash, timeout, or interruption):
+
+### Mandatory State Verification (BEFORE any action)
+
+```bash
+# 1. Check git state
+git status
+git log --oneline -3
+
+# 2. Check PR state (if PR was being created)
+gh pr list --head <branch-name>
+gh pr view <pr-number>  # if PR exists
+
+# 3. Check Issue state
+gh issue view <issue-number>
+
+# 4. Check environment state (if using container-use)
+container-use_environment_list
+```
+
+**Note**: If using environments.json for tracking, also check:
+```bash
+cat .opencode/environments.json 2>/dev/null || echo "No environments.json"
+```
+
+**Note**: `container-use_environment_list` is a tool call, not a bash command. Use the agent tool to check environment state.
+
+### Recovery Decision Matrix
+
+| Git State | PR State | Issue State | Action |
+|-----------|----------|-------------|--------|
+| Changes uncommitted | N/A | OPEN | Continue implementation |
+| Changes committed, not pushed | No PR | OPEN | Push and create PR |
+| Changes pushed | No PR | OPEN | Create PR |
+| Changes pushed | PR exists (open), CI passing | OPEN | Merge PR |
+| Changes pushed | PR exists (open), CI failing | OPEN | Fix issues, push, wait for CI |
+| Changes pushed | PR closed (not merged) | OPEN | Review feedback, fix, create new PR |
+| Changes pushed | PR merged | OPEN | Verify Issue auto-closed, close if needed |
+| Changes pushed | PR merged | CLOSED | **DONE** - verify and report |
+| Branch deleted on remote | N/A | OPEN | Re-push from local, or restart |
+| N/A | N/A | CLOSED (by others) | Verify completion, report status to user |
+
+**Note on Worktree Conflicts**: If `gh pr merge --delete-branch` fails with worktree error, merge without `--delete-branch` flag. Delete branch manually later if needed.
+
+### Continuation Prompt Best Practices
+
+When creating continuation prompts for future sessions:
+
+~~~markdown
+## Session Context
+- Branch: <branch-name>
+- Last commit: <commit-hash>
+- Environment ID: <env-id> (if using container-use)
+
+## Completed Steps
+- [x] Step 1 (evidence: commit abc123)
+- [x] Step 2 (evidence: PR #45)
+
+## Remaining Steps
+- [ ] Step 3: <specific action>
+- [ ] Step 4: <specific action>
+
+## Verification Commands (run BEFORE resuming)
+    git status
+    gh pr view <pr-number>
+    gh issue view <issue-number>
+
+## CRITICAL: Do NOT assume previous state. Always verify.
+~~~
+
+**Anti-pattern**: Blindly executing continuation prompts without state verification.
+
+---
+
 ## Forbidden Actions (HARD BLOCKS)
 
 | Action | Why It's Forbidden |
@@ -162,7 +306,7 @@ Work is complete when ALL conditions are met:
 - [ ] Tests pass (if applicable)
 - [ ] Environment Info presented (format below)
 - [ ] PR created
-- [ ] **CI passed** (MUST wait: `gh pr checks <PR番号> --watch`)
+- [ ] **CI passed** (MUST wait: `gh pr checks <pr-number> --watch`)
 - [ ] PR merged (only AFTER CI passes)
 - [ ] Issue closed
 - [ ] Environment deleted: `container-use delete <env_id>` (after PR merge)
@@ -174,14 +318,21 @@ Work is complete when ALL conditions are met:
 gh pr create --title "..." --body "..."
 
 # 2. Wait for CI to complete (NEVER skip this step)
-gh pr checks <PR番号> --watch
+gh pr checks <pr-number> --watch
 
 # 3. Merge only after CI passes
-gh pr merge <PR番号> --squash --delete-branch
+gh pr merge <pr-number> --merge
 
 # 4. Close related issue
-gh issue close <Issue番号>
+gh issue close <issue-number>
 ```
+
+**Merge Strategy**:
+- `--merge`: Default. Preserves commit history.
+- `--squash`: Use for feature branches with many WIP commits.
+- `--rebase`: Use when linear history is required.
+
+**Worktree Conflict**: If adding `--delete-branch` option and it fails due to worktree, merge without it. Delete branch manually later if needed.
 
 **HARD BLOCK**: Never merge a PR without confirming CI success.
 
