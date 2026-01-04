@@ -42,13 +42,13 @@ pub use plist::{PomodoroLaunchAgent, DEFAULT_LABEL};
 /// plistファイルのデフォルトパスを取得
 ///
 /// # Returns
-/// plistファイルのパス（`~/Library/LaunchAgents/com.example.pomodoro.plist`）
+/// plistファイルのパス（`~/Library/LaunchAgents/com.github.takemo101.pomodoro.plist`）
 ///
 /// # Errors
 /// ホームディレクトリの取得に失敗した場合
 pub fn get_plist_path() -> Result<std::path::PathBuf> {
     let home_dir = dirs::home_dir().ok_or(LaunchAgentError::HomeDirectoryNotFound)?;
-    Ok(home_dir.join("Library/LaunchAgents/com.example.pomodoro.plist"))
+    Ok(home_dir.join(format!("Library/LaunchAgents/{}.plist", DEFAULT_LABEL)))
 }
 
 /// ログディレクトリのデフォルトパスを取得
