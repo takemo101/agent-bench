@@ -221,6 +221,18 @@ def create_subtask_issues(
             
             subtask_id = parse_issue_number(result)
             created_ids.append(subtask_id)
+
+            # Sub-issueとして親Issueに登録
+            # Note: Sub-issues機能が有効なリポジトリでのみ動作
+            try:
+                # 1. 作成したSubtaskのDatabase IDを取得 (GraphQL Node IDではなくInteger IDが必要)
+                sub_id_res = bash(f"gh api '/repos/{{owner}}/{{repo}}/issues/{subtask_id}' --jq .id")
+                if sub_id_res.exit_code == 0:
+                    sub_db_id = sub_id_res.stdout.strip()
+                    # 2. 親IssueのSub-issueとして追加
+                    bash(f"gh api --method POST '/repos/{{owner}}/{{repo}}/issues/{parent_issue_id}/sub_issues' -F sub_issue_id={sub_db_id} || true")
+            except:
+                pass # Sub-issue登録失敗は致命的エラーとしない
         
         # 親Issueにサマリーをコメント
         add_decomposition_summary(parent_issue_id, subtasks, created_ids)
