@@ -80,7 +80,8 @@ def implement_subtasks(parent_issue_id: int, subtask_ids: list[int]):
         )
         
         # Step 3: 完了を待つ（container-worker内でレビューループ実行済み）
-        result = background_output(task_id=task_id)
+        # ⚠️ collect_worker_result() で最小化（セクション14参照）
+        result = collect_worker_result(task_id)
         
         # Step 4: CI監視 → マージ → 環境削除（Sisyphus）
         if result.get("pr_number"):
@@ -227,9 +228,10 @@ def implement_multiple_parent_issues(parent_issue_ids: list[int]):
         task_ids[parent_id] = task_id
     
     # 全親Issueの完了を待つ
+    # ⚠️ collect_worker_result() で最小化（セクション14参照）
     results = []
     for parent_id, task_id in task_ids.items():
-        result = background_output(task_id=task_id)
+        result = collect_worker_result(task_id)
         results.append(result)
     
     # サマリー報告
@@ -1087,7 +1089,8 @@ def implement_parent_issue_with_subtasks(parent_issue_id: int):
             description=f"Subtask #{subtask_id} 実装",
             prompt=build_subtask_worker_prompt(subtask_id, branch_name, parent_issue_id)
         )
-        result = background_output(task_id=task_id)
+        # ⚠️ collect_worker_result() で最小化（セクション14参照）
+        result = collect_worker_result(task_id)
         
         # 2c: CI監視・マージ・環境削除
         if result.get("pr_number"):
@@ -1905,7 +1908,16 @@ def post_pr_workflow_parallel(pr_results: list[dict]):
 | テスト出力 | PRに記載済み |
 | エラースタックトレース | 修正済みなら不要 |
 
-#### 実装例
+#### 使用箇所
+
+| 呼び出し元 | タイミング | 該当セクション |
+|-----------|-----------|---------------|
+| Sisyphus | 単一Subtask完了時 | 正しい実装フロー（83行） |
+| Sisyphus | Subtask順次実装時 | Subtask順次実装の全体フロー（1091行） |
+| Sisyphus | 複数親Issue並列処理時 | 複数親Issue指定時の並列処理（233行） |
+| Sisyphus | handle_single_issue内 | Sisyphusへの指示（2095行） |
+
+#### 実装
 
 ```python
 def collect_worker_result(task_id: str) -> dict:
@@ -1934,6 +1946,31 @@ def collect_worker_result(task_id: str) -> dict:
 | 1 Subtask | ~5,000トークン | ~200トークン | 96% |
 | 5 Subtasks | ~25,000トークン | ~1,000トークン | 96% |
 | 10 Subtasks | ~50,000トークン | ~2,000トークン | 96% |
+
+### 15. decompose-issue との連携
+
+> `/decompose-issue` で作成されたSubtaskは `detect_subtasks()` で自動検出される。
+
+#### 検出される形式
+
+`/decompose-issue` が作成するSubtask Issueは以下の形式を持つ：
+
+| 要素 | 形式 | 例 |
+|------|------|-----|
+| タイトル | `[#{parent_id}] N/M: {title}` | `[#8] 1/3: 基本データ型定義` |
+| 本文 | `## 親Issue\n- Epic: #{parent_id}` | `Epic: #8` |
+| ラベル | `subtask`, `automated` | - |
+
+#### detect_subtasks() の検出パターン
+
+```python
+# 以下のパターンで検出される（優先順）:
+# 1. 親Issue bodyの "- [ ] #N" チェックリスト形式
+# 2. 親Issue commentsの "Created subtask #N" 記録
+# 3. 子Issue bodyの "Epic: #{parent_id}" 逆参照
+```
+
+これにより、`/decompose-issue 8` で作成されたSubtaskは、`/implement-issues 8` で自動的に検出・実装される。
 
 ## 技術スタック別設定
 
@@ -2143,7 +2180,8 @@ Subtask #{subtask_id} を実装し、PRを作成してください。
             )
             
             # 完了を待つ
-            result = background_output(task_id=task_id)
+            # ⚠️ collect_worker_result() で最小化（セクション14参照）
+            result = collect_worker_result(task_id)
             
             # CI監視 → マージ → 環境削除
             if result.get("pr_number"):
