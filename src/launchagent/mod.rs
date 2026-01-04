@@ -180,7 +180,7 @@ mod tests {
 
         let xml_str = xml.unwrap();
         assert!(xml_str.contains("<plist"));
-        assert!(xml_str.contains("com.example.pomodoro"));
+        assert!(xml_str.contains("com.github.takemo101.pomodoro"));
     }
 
     #[test]
