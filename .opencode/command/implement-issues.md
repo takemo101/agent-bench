@@ -1881,6 +1881,60 @@ def post_pr_workflow_parallel(pr_results: list[dict]):
         # 失敗/タイムアウト: 環境保持、report_to_user()
 ```
 
+### 14. 結果の最小化ルール（トークン最適化）⚠️ 必須
+
+> **⚠️ 重要**: container-workerからの結果は最小限の情報のみ保持し、親セッションのトークン消費を抑制する。
+
+#### 保持する情報（ホワイトリスト）
+
+| フィールド | 型 | 説明 |
+|-----------|-----|------|
+| `subtask_id` | int | Subtask Issue ID |
+| `pr_number` | int | 作成したPR番号 |
+| `status` | string | `"merged"`, `"failed"`, `"escalated"` |
+| `score` | int | レビュースコア (1-10) |
+| `env_id` | string | 環境ID（削除確認用） |
+
+#### 破棄する情報（ブラックリスト）
+
+| 情報 | 理由 |
+|------|------|
+| 詳細ログ | PRに記載済み |
+| コード差分 | GitHubで確認可能 |
+| レビューコメント全文 | スコアのみで十分 |
+| テスト出力 | PRに記載済み |
+| エラースタックトレース | 修正済みなら不要 |
+
+#### 実装例
+
+```python
+def collect_worker_result(task_id: str) -> dict:
+    """container-workerの結果を最小化して収集"""
+    
+    raw_result = background_output(task_id=task_id)
+    
+    # 最小化された結果のみ抽出
+    return {
+        "subtask_id": raw_result.get("subtask_id"),
+        "pr_number": raw_result.get("pr_number"),
+        "status": raw_result.get("status"),
+        "score": raw_result.get("score"),
+        "env_id": raw_result.get("env_id")
+    }
+    # ⛔ 以下は破棄（親セッションに持ち込まない）
+    # - raw_result.get("logs")
+    # - raw_result.get("diff")
+    # - raw_result.get("review_comments")
+```
+
+#### トークン削減効果
+
+| シナリオ | 従来 | 最適化後 | 削減率 |
+|---------|------|---------|--------|
+| 1 Subtask | ~5,000トークン | ~200トークン | 96% |
+| 5 Subtasks | ~25,000トークン | ~1,000トークン | 96% |
+| 10 Subtasks | ~50,000トークン | ~2,000トークン | 96% |
+
 ## 技術スタック別設定
 
 詳細は [container-use環境構築ガイド](../skill/container-use-guide.md) を参照。
