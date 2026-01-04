@@ -3,6 +3,7 @@
 //! macOS専用のポモドーロタイマーCLIツール。
 //! デーモンプロセスとして動作し、Unix Domain Socket経由でCLIコマンドを受け付ける。
 
+pub mod daemon;
 pub mod types;
 
 fn main() {
