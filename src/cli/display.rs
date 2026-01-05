@@ -2,13 +2,50 @@
 //!
 //! Provides colored and formatted output for CLI commands.
 
-use crate::types::IpcResponse;
+use crate::types::{IpcResponse, TimerPhase};
 use colored::Colorize;
+use indicatif::{ProgressBar, ProgressStyle};
+use std::str::FromStr;
 
 /// Display handler for CLI output
 pub struct Display;
 
 impl Display {
+    // Helper to create styled progress bar
+    fn create_progress_bar(&self, phase: TimerPhase, total_seconds: u64, remaining_seconds: u64, task_name: Option<&str>) -> ProgressBar {
+        let (color_code, icon, label) = match phase {
+            TimerPhase::Working => ("red", "🍅", "作業中"),
+            TimerPhase::Breaking => ("green", "☕", "休憩中"),
+            TimerPhase::LongBreaking => ("blue", "💤", "長期休憩"),
+            TimerPhase::Paused => ("yellow", "⏸", "一時停止"),
+            _ => ("white", "⏹", "停止"),
+        };
+
+        let template = format!(
+            "{{prefix}} [{{bar:40.{}}}] {{pos}}/{{len}} ({{percent}}%)\n{{msg}}",
+            color_code
+        );
+
+        let style = ProgressStyle::with_template(&template)
+            .unwrap()
+            .progress_chars("█░");
+
+        let bar = ProgressBar::new(total_seconds);
+        bar.set_style(style);
+        // Position in indicatif is usually "completed", so total - remaining
+        bar.set_position(total_seconds.saturating_sub(remaining_seconds));
+        
+        // Prefix with color
+        let prefix = format!("{} {}", icon, label).color(color_code).to_string();
+        bar.set_prefix(prefix);
+        
+        // Message (Task Name)
+        if let Some(name) = task_name {
+            bar.set_message(format!("タスク: {}", name.cyan()));
+        }
+
+        bar
+    }
     /// Create a new Display instance
     pub fn new() -> Self {
         Self
