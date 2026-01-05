@@ -184,6 +184,7 @@ mod tests {
                 remaining_seconds: None,
                 pomodoro_count: None,
                 task_name: Some("Test task".to_string()),
+                duration: None,
             }),
         );
         // This should not panic
