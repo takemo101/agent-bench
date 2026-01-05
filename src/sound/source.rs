@@ -96,4 +96,54 @@ impl SoundSource {
             name: "default".to_string(),
         }
     }
+
+    /// 名前からサウンドソースを検索する
+    pub fn find_by_name(name: &str) -> Option<SoundSource> {
+        if name == "default" {
+            return Some(SoundSource::Embedded {
+                name: "default".to_string(),
+            });
+        }
+
+        let sounds = Self::discover_system_sounds();
+        sounds.into_iter().find(|s| match s {
+            SoundSource::System { name: n, .. } => n == name,
+            _ => false,
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_find_by_name_default() {
+        let source = SoundSource::find_by_name("default");
+        assert!(matches!(source, Some(SoundSource::Embedded { .. })));
+    }
+
+    // macOS環境でのみ実行されるテスト
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn test_find_by_name_system() {
+        // "Glass" or "Ping" usually exists on macOS
+        // If not, this test might fail, so we should be careful.
+        // But discover_system_sounds is used, so if it finds anything, we can test it.
+        let sounds = SoundSource::discover_system_sounds();
+        if let Some(first) = sounds.first() {
+            if let SoundSource::System { name, .. } = first {
+                let found = SoundSource::find_by_name(name);
+                assert!(found.is_some());
+                if let Some(SoundSource::System {
+                    name: found_name, ..
+                }) = found
+                {
+                    assert_eq!(name, &found_name);
+                } else {
+                    panic!("Expected System sound");
+                }
+            }
+        }
+    }
 }
