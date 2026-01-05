@@ -3,6 +3,9 @@ mod error;
 mod player;
 mod source;
 
+pub mod config;
+
+pub use config::SoundConfig;
 pub use embedded::DEFAULT_SOUND_DATA;
 pub use error::SoundError;
 pub use player::RodioSoundPlayer;
