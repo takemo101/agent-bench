@@ -180,6 +180,69 @@ impl Display {
         );
         eprintln!("  {}", msg);
     }
+
+    /// Update status information in a loop
+    /// Returns true if the loop should continue, false if it should stop
+    pub fn update_status(&self, response: IpcResponse, bar: &mut Option<ProgressBar>) -> bool {
+        if let Some(data) = response.data {
+            let phase = data
+                .state
+                .as_deref()
+                .and_then(|s| TimerPhase::from_str(s).ok())
+                .unwrap_or(TimerPhase::Stopped);
+
+            // 停止状態なら終了
+            if phase == TimerPhase::Stopped {
+                if let Some(b) = bar {
+                    b.finish_with_message("停止中");
+                } else {
+                    println!("状態: 停止中");
+                }
+                return false;
+            }
+
+            if let (Some(remaining), Some(duration)) = (data.remaining_seconds, data.duration) {
+                // バーの作成または更新
+                let b = if let Some(b) = bar {
+                    b
+                } else {
+                    // 初回作成
+                    let new_bar = self.create_progress_bar(
+                        phase,
+                        duration as u64,
+                        remaining as u64,
+                        data.task_name.as_deref(),
+                    );
+                    *bar = Some(new_bar);
+                    bar.as_mut().unwrap()
+                };
+
+                // 位置更新
+                b.set_position(duration as u64 - remaining as u64);
+                
+                // フェーズ表示（Prefix）の更新
+                let (color_code, icon, label) = match phase {
+                    TimerPhase::Working => ("red", "🍅", "作業中"),
+                    TimerPhase::Breaking => ("green", "☕", "休憩中"),
+                    TimerPhase::LongBreaking => ("blue", "💤", "長期休憩"),
+                    TimerPhase::Paused => ("yellow", "⏸", "一時停止"),
+                    _ => ("white", "⏹", "停止"),
+                };
+                 let prefix = format!("{} {}", icon, label).color(color_code).to_string();
+                 b.set_prefix(prefix);
+            } else {
+                // 時間情報がない場合
+                println!("{}", response.message);
+                return false;
+            }
+            
+            true
+        } else {
+            // データなし
+            println!("{}", response.message);
+            false
+        }
+    }
 }
 
 impl Default for Display {
