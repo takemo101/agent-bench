@@ -1,4 +1,4 @@
-# 詳細設計・完全ワークフロー (v2.6)
+# 詳細設計・完全ワークフロー (v2.7)
 
 基本設計書を入力として、詳細設計書を作成し、モックアップ生成とテスト設計までを一貫して行うワークフロー。
 
@@ -62,7 +62,8 @@ flowchart TB
         subgraph PHASE5["Phase 5: Issue化"]
             P5_1["Epic Issue作成"]
             P5_2["子Issue作成"]
-            P5_3["依存関係図<br/>(Mermaid)"]
+            P5_3["Sub-issue連携<br/>(GitHub)"]
+            P5_4["依存関係図<br/>(Mermaid)"]
         end
         
         OUTPUT[("詳細設計書群<br/>+ テスト項目書<br/>+ GitHub Issues")]
@@ -98,7 +99,7 @@ flowchart TB
         PHASE45 -->|修正| PHASE1
         PHASE45 -->|中断| ABORT(("中断"))
         
-        P5_1 --> P5_2 --> P5_3
+        P5_1 --> P5_2 --> P5_3 --> P5_4
         PHASE5 --> OUTPUT
     end
     
@@ -111,6 +112,9 @@ flowchart TB
 ```
 
 ---
+
+**変更点(v2.7)**:
+- **Sub-issue連携の自動化**: Epic Issueと子Issueを作成後、GitHub Sub-issues機能を使って親子関係を自動設定（decompose-issueと同等機能）。
 
 **変更点(v2.6)**:
 - **既存システム影響分析の追加**: Phase 0.5で既存詳細設計書・Issue・コードベースへの影響を分析。追加仕様時に整合性を確保。
@@ -1071,6 +1075,17 @@ def create_issues_with_optimal_granularity(design_doc):
     # 5. Epic Issueに子Issue一覧を追加
     update_epic_with_children(epic_issue, created_issues)
     
+    # 6. 子IssueをSub-issueとしてEpicに登録 (v2.7 NEW)
+    # Note: Sub-issues機能が有効なリポジトリでのみ動作
+    for child in created_issues:
+        try:
+            # 1. 作成したIssueのDatabase IDを取得
+            child_db_id = bash(f"gh api '/repos/{{owner}}/{{repo}}/issues/{child.number}' --jq .id")
+            # 2. Epic IssueのSub-issueとして追加
+            bash(f"gh api --method POST '/repos/{{owner}}/{{repo}}/issues/{epic_issue.number}/sub_issues' -F sub_issue_id={child_db_id} || true")
+        except:
+            pass # Sub-issue登録失敗は致命的エラーとしない
+    
     return created_issues
 ```
 
@@ -1138,6 +1153,7 @@ grep -r -c -E '(├|└|│).*─' docs/designs/detailed/{機能名}/**/画面�
 - [ ] **各子Issueが3ファイル以下である** ← v3.0
 - [ ] **各子Issueに推定コード量が記載されている** ← v3.0
 - [ ] **依存関係がMermaid形式で記述されている（ASCII禁止）** ← v2.5
+- [ ] **子IssueがEpicのSub-issueとして登録されている** ← v2.7
 - [ ] 工数見積もりが記載されている
 - [ ] 設計書へのリンクが含まれている
 
