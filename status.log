@@ -1,0 +1,7 @@
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.10s
+     Running `target/debug/pomodoro status`
+DEBUG: update_status called
+DEBUG: update_status called
+DEBUG: update_status called
+DEBUG: update_status called
+DEBUG: update_status called

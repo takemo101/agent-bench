@@ -62,18 +62,28 @@ async fn main() -> Result<()> {
                 display.show_error(&format!("Failed to stop timer: {}", e));
             }
         },
-        Commands::Status => match client.status().await {
-            Ok(response) => {
-                if response.status == "success" {
-                    display.show_status(response);
-                } else {
-                    display.show_error(&response.message);
+        Commands::Status => {
+            let mut bar = None;
+            loop {
+                match client.status().await {
+                    Ok(response) => {
+                        if response.status == "success" {
+                            if !display.update_status(response, &mut bar) {
+                                break;
+                            }
+                        } else {
+                            display.show_error(&response.message);
+                            break;
+                        }
+                    }
+                    Err(e) => {
+                        display.show_error(&format!("Failed to get status: {}", e));
+                        break;
+                    }
                 }
+                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
             }
-            Err(e) => {
-                display.show_error(&format!("Failed to get status: {}", e));
-            }
-        },
+        }
         Commands::Install => match pomodoro::launchagent::install() {
             Ok(_) => display.show_success("LaunchAgent installed successfully"),
             Err(e) => display.show_error(&format!("Failed to install LaunchAgent: {}", e)),

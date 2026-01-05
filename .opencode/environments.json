@@ -1,0 +1,46 @@
+{
+  "$schema": "./environments.schema.json",
+  "_comment": "container-use環境のID追跡ファイル。PRレビュー後の環境再利用に使用。",
+  "environments": [
+    {
+      "env_id": "true-corgi",
+      "branch": "fix/issue-85-status-indicator",
+      "issue_number": 85,
+      "pr_number": 86,
+      "title": "Fix pomodoro status command to update automatically",
+      "status": "pr_created",
+      "created_at": "2026-01-06T07:20:00Z",
+      "last_used_at": "2026-01-06T07:20:00Z"
+    },
+    {
+      "env_id": "social-calf",
+      "branch": "feature/issue-77-indicator-display",
+      "issue_number": 77,
+      "pr_number": 83,
+      "title": "Issue #77: Indicator Display Enhancement",
+      "status": "merged",
+      "created_at": "2026-01-06T12:00:00Z",
+      "last_used_at": "2026-01-06T12:15:00Z"
+    },
+    {
+      "env_id": "true-parrot",
+      "branch": "feature/issue-76-sound-logic",
+      "issue_number": 76,
+      "pr_number": 81,
+      "title": "Issue #76 Sound Logic Expansion",
+      "status": "merged",
+      "created_at": "2026-01-06T12:00:00Z",
+      "last_used_at": "2026-01-06T12:00:00Z"
+    },
+    {
+      "env_id": "main-whale",
+      "branch": "feature/issue-75-sound-config-cli",
+      "issue_number": 75,
+      "pr_number": 80,
+      "title": "Issue #75 Sound Config CLI",
+      "status": "merged",
+      "created_at": "2026-01-06T10:30:00Z",
+      "last_used_at": "2026-01-06T11:00:00Z"
+    }
+  ]
+}
