@@ -49,30 +49,43 @@ impl Display {
         if let Some(data) = response.data {
             println!("{}", "=== タイマー状態 ===".bold());
 
-            if let Some(state) = data.state {
-                let state_display = match state.as_str() {
-                    "working" => "作業中".green(),
-                    "breaking" => "休憩中".cyan(),
-                    "long_breaking" => "長い休憩中".cyan(),
-                    "paused" => "一時停止".yellow(),
-                    "stopped" => "停止中".red(),
-                    _ => state.normal(),
+            let phase = data.state.as_deref()
+                .and_then(|s| TimerPhase::from_str(s).ok())
+                .unwrap_or(TimerPhase::Stopped);
+
+            // インジケーター表示（durationがある場合のみ）
+            if let (Some(remaining), Some(duration)) = (data.remaining_seconds, data.duration) {
+                let bar = self.create_progress_bar(
+                    phase,
+                    duration as u64,
+                    remaining as u64,
+                    data.task_name.as_deref()
+                );
+                bar.finish();
+            } else {
+                // 従来のテキスト表示（後方互換性のため）
+                let state_display = match phase {
+                    TimerPhase::Working => "作業中".green(),
+                    TimerPhase::Breaking => "休憩中".cyan(),
+                    TimerPhase::LongBreaking => "長い休憩中".cyan(),
+                    TimerPhase::Paused => "一時停止".yellow(),
+                    TimerPhase::Stopped => "停止中".red(),
                 };
                 println!("状態: {}", state_display);
-            }
 
-            if let Some(remaining) = data.remaining_seconds {
-                let minutes = remaining / 60;
-                let seconds = remaining % 60;
-                println!("残り時間: {}:{:02}", minutes, seconds);
+                if let Some(remaining) = data.remaining_seconds {
+                    let minutes = remaining / 60;
+                    let seconds = remaining % 60;
+                    println!("残り時間: {}:{:02}", minutes, seconds);
+                }
+
+                if let Some(task) = &data.task_name {
+                    println!("タスク: {}", task.cyan());
+                }
             }
 
             if let Some(count) = data.pomodoro_count {
                 println!("完了ポモドーロ: {} 🍅", count);
-            }
-
-            if let Some(task) = data.task_name {
-                println!("タスク: {}", task.cyan());
             }
         } else {
             println!("{}", response.message);
