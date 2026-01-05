@@ -429,6 +429,7 @@ mod tests {
                 remaining_seconds: Some(1500),
                 pomodoro_count: Some(2),
                 task_name: Some("Test".to_string()),
+                duration: Some(1500),
             }),
         );
         let server_handle = tokio::spawn(mock_server_respond(listener, response.clone()));
