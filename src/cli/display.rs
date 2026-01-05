@@ -184,7 +184,6 @@ impl Display {
     /// Update status information in a loop
     /// Returns true if the loop should continue, false if it should stop
     pub fn update_status(&self, response: IpcResponse, bar: &mut Option<ProgressBar>) -> bool {
-        println!("DEBUG: update_status called");
         if let Some(data) = response.data {
             let phase = data
                 .state
