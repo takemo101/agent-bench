@@ -90,28 +90,31 @@ const fn generate_beep_wav() -> [u8; WAV_FILE_SIZE] {
     // Generate 440Hz sine wave samples with fade in/out
     let mut i = 0;
     while i < NUM_SAMPLES {
-        // Calculate sine value using Taylor series approximation
-        // sin(x) ≈ x - x³/6 + x⁵/120 - x⁷/5040
-        let phase = (i as i64 * FREQUENCY as i64 * 2 * 31416) / (SAMPLE_RATE as i64 * 10000);
+        // Calculate phase: 0 to 2π for each cycle, scaled by 10000
+        // phase = (i * frequency * 2π) / sample_rate
+        // scaled: phase_scaled = (i * frequency * 2 * 31416) / sample_rate
+        let phase = (i as i64 * FREQUENCY as i64 * 2 * 31416) / SAMPLE_RATE as i64;
         let phase_normalized = phase % 62832; // 2π * 10000
+
+        // Convert to range -π to π (scaled by 10000)
         let x = if phase_normalized > 31416 {
             phase_normalized - 62832
         } else {
             phase_normalized
         };
 
-        // Convert to smaller range for calculation (-π to π as fixed point)
-        let x_fixed = x as i32; // x is in range -31416 to 31416 (represents -π to π * 10000)
+        // sin approximation using Taylor series: sin(θ) ≈ θ - θ³/6 + θ⁵/120
+        // where θ = x / 10000 (actual radians)
+        // Result is scaled by 10000: 10000 * sin(θ)
+        //
+        // 10000 * sin(x/10000) = x - x³/(6 * 10000²) + x⁵/(120 * 10000⁴) - ...
+        //                      = x - x³/600_000_000 + x⁵/1.2e18 - ...
+        //
+        // For 16-bit fixed point, we only need first two terms for sufficient accuracy
+        let x_cubed = x * x * x;
+        let sin_val = x - x_cubed / 600_000_000;
 
-        // sin approximation using Taylor series (fixed point, scaled by 10000)
-        let x2 = (x_fixed as i64 * x_fixed as i64) / 100_000_000; // x²
-        let x3 = (x2 * x_fixed as i64) / 10000; // x³
-        let x5 = (x3 * x2) / 10000; // x⁵
-        let x7 = (x5 * x2) / 10000; // x⁷
-
-        let sin_val = x_fixed as i64 - x3 / 6 + x5 / 120 - x7 / 5040;
-
-        // Apply envelope (fade in/out)
+        // Apply envelope (fade in/out), scaled by 10000
         let envelope = if i < FADE_SAMPLES {
             // Fade in
             (i as i64 * 10000) / FADE_SAMPLES as i64
@@ -123,10 +126,13 @@ const fn generate_beep_wav() -> [u8; WAV_FILE_SIZE] {
         };
 
         // Calculate final sample value
-        // sin_val is scaled by 10000, envelope is scaled by 10000
-        // We want 16-bit signed (-32768 to 32767)
-        // Use 70% volume to avoid clipping
-        let sample = ((sin_val * envelope * 7) / 1_000_000_000) as i16;
+        // sin_val is in range approx -10000 to 10000 (representing -1 to 1)
+        // envelope is in range 0 to 10000 (representing 0 to 1)
+        // Target: 16-bit signed (-32768 to 32767), using 70% volume = 22937
+        //
+        // sample = (sin_val / 10000) * (envelope / 10000) * 22937
+        //        = sin_val * envelope * 22937 / 100_000_000
+        let sample = ((sin_val * envelope / 10000) * 22937 / 10000) as i16;
 
         // Write as little-endian 16-bit
         let sample_bytes = sample.to_le_bytes();
