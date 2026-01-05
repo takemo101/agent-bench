@@ -654,6 +654,7 @@ mod tests {
             remaining_seconds: Some(1500),
             pomodoro_count: Some(3),
             task_name: Some("開発".to_string()),
+            duration: Some(1500),
         };
         let response = IpcResponse::success("タイマーを開始しました", Some(data));
 
