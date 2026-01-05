@@ -83,7 +83,7 @@ async fn main() -> Result<()> {
                 }
                 tokio::time::sleep(std::time::Duration::from_secs(1)).await;
             }
-        },
+        }
         Commands::Install => match pomodoro::launchagent::install() {
             Ok(_) => display.show_success("LaunchAgent installed successfully"),
             Err(e) => display.show_error(&format!("Failed to install LaunchAgent: {}", e)),

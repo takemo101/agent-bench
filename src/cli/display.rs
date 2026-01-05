@@ -219,7 +219,7 @@ impl Display {
 
                 // 位置更新
                 b.set_position(duration as u64 - remaining as u64);
-                
+
                 // フェーズ表示（Prefix）の更新
                 let (color_code, icon, label) = match phase {
                     TimerPhase::Working => ("red", "🍅", "作業中"),
@@ -228,14 +228,14 @@ impl Display {
                     TimerPhase::Paused => ("yellow", "⏸", "一時停止"),
                     _ => ("white", "⏹", "停止"),
                 };
-                 let prefix = format!("{} {}", icon, label).color(color_code).to_string();
-                 b.set_prefix(prefix);
+                let prefix = format!("{} {}", icon, label).color(color_code).to_string();
+                b.set_prefix(prefix);
             } else {
                 // 時間情報がない場合
                 println!("{}", response.message);
                 return false;
             }
-            
+
             true
         } else {
             // データなし
