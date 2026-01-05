@@ -41,7 +41,7 @@ impl SoundConfig {
             Err("Could not determine home directory".into())
         }
     }
-    
+
     /// 指定されたパスから読み込む
     pub fn load_from_file(path: &Path) -> Result<Self, Box<dyn std::error::Error>> {
         if !path.exists() {
@@ -79,7 +79,7 @@ mod tests {
     fn test_save_and_load() {
         let file = NamedTempFile::new().unwrap();
         let path = file.path();
-        
+
         let config = SoundConfig {
             work_end_sound: "Ping".to_string(),
             break_end_sound: "Pong".to_string(),
@@ -93,14 +93,14 @@ mod tests {
 
         assert_eq!(config, loaded);
     }
-    
+
     #[test]
     fn test_load_non_existent() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("non_existent.json");
-        
+
         let result = SoundConfig::load_from_file(&path);
-        
+
         // Should return default
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), SoundConfig::default());
@@ -110,11 +110,11 @@ mod tests {
     fn test_load_corrupted() {
         let file = NamedTempFile::new().unwrap();
         let path = file.path();
-        
+
         fs::write(path, "{ invalid json }").unwrap();
-        
+
         let result = SoundConfig::load_from_file(path);
-        
+
         // Should return error
         assert!(result.is_err());
     }

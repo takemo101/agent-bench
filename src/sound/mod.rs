@@ -5,11 +5,11 @@ mod source;
 
 pub mod config;
 
+pub use config::SoundConfig;
 pub use embedded::DEFAULT_SOUND_DATA;
 pub use error::SoundError;
 pub use player::RodioSoundPlayer;
 pub use source::SoundSource;
-pub use config::SoundConfig;
 
 use async_trait::async_trait;
 
