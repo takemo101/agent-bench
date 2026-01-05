@@ -41,6 +41,21 @@ impl TimerPhase {
     }
 }
 
+impl std::str::FromStr for TimerPhase {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "working" => Ok(TimerPhase::Working),
+            "breaking" => Ok(TimerPhase::Breaking),
+            "long_breaking" => Ok(TimerPhase::LongBreaking),
+            "paused" => Ok(TimerPhase::Paused),
+            "stopped" => Ok(TimerPhase::Stopped),
+            _ => Err(()),
+        }
+    }
+}
+
 /// タイマー設定
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PomodoroConfig {
