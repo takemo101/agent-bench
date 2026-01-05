@@ -54,3 +54,50 @@ async fn test_rodio_player_disabled() {
     let result = player.play(&source).await;
     assert!(result.is_ok());
 }
+
+/// Issue #87: AIFF decode must succeed (was failing with "Unrecognized format")
+#[cfg(target_os = "macos")]
+#[test]
+fn test_fix_issue_87_aiff_decode() {
+    use rodio::Decoder;
+    use std::fs::File;
+    use std::io::BufReader;
+    use std::path::Path;
+
+    let system_sounds_path = Path::new("/System/Library/Sounds");
+
+    if !system_sounds_path.exists() {
+        return;
+    }
+
+    let aiff_files: Vec<_> = std::fs::read_dir(system_sounds_path)
+        .expect("Should read system sounds directory")
+        .filter_map(Result::ok)
+        .filter(|e| {
+            e.path()
+                .extension()
+                .and_then(|ext| ext.to_str())
+                .map(|ext| ext.eq_ignore_ascii_case("aiff"))
+                .unwrap_or(false)
+        })
+        .collect();
+
+    assert!(
+        !aiff_files.is_empty(),
+        "Should find at least one AIFF file in /System/Library/Sounds"
+    );
+
+    for entry in aiff_files.iter().take(3) {
+        let path = entry.path();
+        let file = File::open(&path).expect("Should open AIFF file");
+        let reader = BufReader::new(file);
+
+        let result = Decoder::new(reader);
+        assert!(
+            result.is_ok(),
+            "AIFF decoding should succeed for {:?}, but got error: {:?}",
+            path,
+            result.err()
+        );
+    }
+}
