@@ -82,6 +82,12 @@ async fn main() -> Result<()> {
             Ok(_) => display.show_success("LaunchAgent uninstalled successfully"),
             Err(e) => display.show_error(&format!("Failed to uninstall LaunchAgent: {}", e)),
         },
+        Commands::Config(args) => {
+            pomodoro::cli::sound::handle_config(args)?;
+        }
+        Commands::Sounds => {
+            pomodoro::cli::sound::handle_sounds()?;
+        }
         Commands::Daemon => {
             // デーモン設定の初期化
             let config = pomodoro::types::PomodoroConfig::default();

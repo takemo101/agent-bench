@@ -52,6 +52,24 @@ pub enum Commands {
         #[arg(value_enum)]
         shell: clap_complete::Shell,
     },
+
+    /// サウンド設定を管理
+    Config(ConfigArgs),
+
+    /// システムサウンド一覧を表示
+    Sounds,
+}
+
+/// Config command arguments
+#[derive(Args, Debug, Clone)]
+pub struct ConfigArgs {
+    /// 作業完了時のサウンドを設定
+    #[arg(long)]
+    pub work_sound: Option<String>,
+
+    /// 休憩完了時のサウンドを設定
+    #[arg(long)]
+    pub break_sound: Option<String>,
 }
 
 /// start command arguments
@@ -237,5 +255,23 @@ mod tests {
         let args = vec!["pomodoro", "--verbose", "status"];
         let cli = Cli::try_parse_from(args).unwrap();
         assert!(cli.verbose);
+    }
+
+    #[test]
+    fn test_parse_sounds_command() {
+        let args = vec!["pomodoro", "sounds"];
+        let cli = Cli::try_parse_from(args).unwrap();
+        assert!(matches!(cli.command, Commands::Sounds));
+    }
+
+    #[test]
+    fn test_parse_config_command() {
+        let args = vec!["pomodoro", "config", "--work-sound", "Glass"];
+        let cli = Cli::try_parse_from(args).unwrap();
+        if let Commands::Config(args) = cli.command {
+            assert_eq!(args.work_sound, Some("Glass".to_string()));
+        } else {
+            panic!("Expected Config command");
+        }
     }
 }
