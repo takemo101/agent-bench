@@ -22,7 +22,7 @@ colored = "2.1"
 rodio = { version = "0.20", default-features = false, features = ["symphonia-all"] }
 async-trait = "0.1"
 tray-icon = "0.19"
-image = "0.25"
+image = "0.24"
 plist = "1.6"
 dirs = "5.0"
 aligned = "=0.4.2"
