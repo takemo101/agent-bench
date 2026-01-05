@@ -36,7 +36,7 @@ impl SoundConfig {
     /// 設定ファイルに保存する
     pub fn save(&self) -> Result<(), Box<dyn std::error::Error>> {
         if let Some(path) = Self::get_config_path() {
-            Self::save_to_file(&path)
+            self.save_to_file(&path)
         } else {
             Err("Could not determine home directory".into())
         }
@@ -44,14 +44,22 @@ impl SoundConfig {
     
     /// 指定されたパスから読み込む
     pub fn load_from_file(path: &Path) -> Result<Self, Box<dyn std::error::Error>> {
-        // TDD Red: Not implemented
-        unimplemented!("load_from_file not implemented");
+        if !path.exists() {
+            return Ok(Self::default());
+        }
+        let content = fs::read_to_string(path)?;
+        let config = serde_json::from_str(&content)?;
+        Ok(config)
     }
 
     /// 指定されたパスに保存する
     pub fn save_to_file(&self, path: &Path) -> Result<(), Box<dyn std::error::Error>> {
-        // TDD Red: Not implemented
-        unimplemented!("save_to_file not implemented");
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let content = serde_json::to_string_pretty(self)?;
+        fs::write(path, content)?;
+        Ok(())
     }
 }
 
@@ -88,39 +96,26 @@ mod tests {
     
     #[test]
     fn test_load_non_existent() {
-        let path = Path::new("/tmp/non_existent_file_xyz_123.json");
-        // Should return default if logic handles missing file, 
-        // BUT load_from_file should probably fail if file is missing?
-        // The design says "Error handling (file missing...)".
-        // The wrapper `load()` handles missing file by returning default.
-        // `load_from_file` usually expects the file to exist or returns IO error.
-        // Let's assume `load_from_file` returns default if not found, OR error.
-        // If I strictly follow "load logic (read from JSON)", usually it tries to read.
-        // If I want `load()` to be safe, `load()` checks existence.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("non_existent.json");
         
-        // Let's implement `load_from_file` to return default if file not found, for convenience?
-        // No, `load_from_file` implies reading THAT file. If it's missing, it's an error or default.
-        // "Implement error handling (return default if file missing)" in requirements applies to the *Module* behavior.
+        let result = SoundConfig::load_from_file(&path);
         
-        // Let's verify what happens.
+        // Should return default
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), SoundConfig::default());
+    }
+
+    #[test]
+    fn test_load_corrupted() {
+        let file = NamedTempFile::new().unwrap();
+        let path = file.path();
+        
+        fs::write(path, "{ invalid json }").unwrap();
+        
         let result = SoundConfig::load_from_file(path);
-        // I expect it to return Ok(Default) or Err(NotFound). 
-        // Based on "return default if file missing", I'll make `load_from_file` return Default if NotFound.
         
-        // Wait, if I pass a specific path that doesn't exist, maybe I want to know it doesn't exist?
-        // But for `load()`, it definitely returns default.
-        // Let's assert that `load_from_file` returns Default on NotFound error.
-        
-        match result {
-             Ok(c) => assert_eq!(c, SoundConfig::default()),
-             Err(_) => {
-                 // If implementation returns error, that's fine too, but then `load()` must handle it.
-                 // Let's decide: `load_from_file` returns Result. 
-                 // If I want to test the Requirement, `SoundConfig::load()` is the main entry point.
-                 // But `load()` uses `dirs::home` which I can't mock easily.
-                 // So I test `load_from_file` behavior.
-                 // I will assume `load_from_file` returns default if file is missing.
-             }
-        }
+        // Should return error
+        assert!(result.is_err());
     }
 }
