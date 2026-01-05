@@ -12,7 +12,13 @@ pub struct Display;
 
 impl Display {
     // Helper to create styled progress bar
-    fn create_progress_bar(&self, phase: TimerPhase, total_seconds: u64, remaining_seconds: u64, task_name: Option<&str>) -> ProgressBar {
+    fn create_progress_bar(
+        &self,
+        phase: TimerPhase,
+        total_seconds: u64,
+        remaining_seconds: u64,
+        task_name: Option<&str>,
+    ) -> ProgressBar {
         let (color_code, icon, label) = match phase {
             TimerPhase::Working => ("red", "🍅", "作業中"),
             TimerPhase::Breaking => ("green", "☕", "休憩中"),
@@ -34,11 +40,11 @@ impl Display {
         bar.set_style(style);
         // Position in indicatif is usually "completed", so total - remaining
         bar.set_position(total_seconds.saturating_sub(remaining_seconds));
-        
+
         // Prefix with color
         let prefix = format!("{} {}", icon, label).color(color_code).to_string();
         bar.set_prefix(prefix);
-        
+
         // Message (Task Name)
         if let Some(name) = task_name {
             bar.set_message(format!("タスク: {}", name.cyan()));
@@ -86,7 +92,9 @@ impl Display {
         if let Some(data) = response.data {
             println!("{}", "=== タイマー状態 ===".bold());
 
-            let phase = data.state.as_deref()
+            let phase = data
+                .state
+                .as_deref()
                 .and_then(|s| TimerPhase::from_str(s).ok())
                 .unwrap_or(TimerPhase::Stopped);
 
@@ -96,7 +104,7 @@ impl Display {
                     phase,
                     duration as u64,
                     remaining as u64,
-                    data.task_name.as_deref()
+                    data.task_name.as_deref(),
                 );
                 bar.finish();
             } else {
