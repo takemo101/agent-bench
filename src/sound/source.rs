@@ -131,18 +131,16 @@ mod tests {
         // If not, this test might fail, so we should be careful.
         // But discover_system_sounds is used, so if it finds anything, we can test it.
         let sounds = SoundSource::discover_system_sounds();
-        if let Some(first) = sounds.first() {
-            if let SoundSource::System { name, .. } = first {
-                let found = SoundSource::find_by_name(name);
-                assert!(found.is_some());
-                if let Some(SoundSource::System {
-                    name: found_name, ..
-                }) = found
-                {
-                    assert_eq!(name, &found_name);
-                } else {
-                    panic!("Expected System sound");
-                }
+        if let Some(SoundSource::System { name, .. }) = sounds.first() {
+            let found = SoundSource::find_by_name(name);
+            assert!(found.is_some());
+            if let Some(SoundSource::System {
+                name: found_name, ..
+            }) = found
+            {
+                assert_eq!(name, &found_name);
+            } else {
+                panic!("Expected System sound");
             }
         }
     }
