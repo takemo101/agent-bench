@@ -224,6 +224,22 @@ impl TimerState {
     pub fn is_paused(&self) -> bool {
         self.phase == TimerPhase::Paused
     }
+
+    /// 現在のフェーズの合計時間（秒）を取得
+    pub fn current_duration(&self) -> u32 {
+        let phase = if self.phase == TimerPhase::Paused {
+            self.previous_phase.unwrap_or(TimerPhase::Stopped)
+        } else {
+            self.phase
+        };
+
+        match phase {
+            TimerPhase::Working => self.config.work_minutes * 60,
+            TimerPhase::Breaking => self.config.break_minutes * 60,
+            TimerPhase::LongBreaking => self.config.long_break_minutes * 60,
+            _ => 0,
+        }
+    }
 }
 
 // ============================================================================
