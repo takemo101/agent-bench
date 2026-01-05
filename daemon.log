@@ -1,4 +1,4 @@
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.10s
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.08s
      Running `target/debug/pomodoro daemon`
 Daemon started at "/root/.pomodoro/pomodoro.sock"
 ALSA lib confmisc.c:855:(parse_card) cannot find card '0'
