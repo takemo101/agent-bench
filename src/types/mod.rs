@@ -289,6 +289,8 @@ pub struct ResponseData {
     pub pomodoro_count: Option<u32>,
     #[serde(rename = "taskName", skip_serializing_if = "Option::is_none")]
     pub task_name: Option<String>,
+    #[serde(rename = "duration", skip_serializing_if = "Option::is_none")]
+    pub duration: Option<u32>,
 }
 
 impl IpcResponse {
