@@ -1,4 +1,4 @@
-# 詳細設計・完全ワークフロー (v2.5)
+# 詳細設計・完全ワークフロー (v2.6)
 
 基本設計書を入力として、詳細設計書を作成し、モックアップ生成とテスト設計までを一貫して行うワークフロー。
 
@@ -19,6 +19,13 @@ flowchart TB
             P0_1["機能分解"]
             P0_2["ドキュメント一覧作成"]
             P0_3{"ユーザー確認"}
+        end
+        
+        subgraph PHASE05["Phase 0.5: 影響分析<br/>【追加仕様時】"]
+            P05_1["既存詳細設計書<br/>整合性確認"]
+            P05_2["既存Issue<br/>依存関係確認"]
+            P05_3["コードベース<br/>影響分析"]
+            P05_4{"ユーザー確認"}
         end
         
         subgraph PHASE1["Phase 1: 設計書作成"]
@@ -62,8 +69,13 @@ flowchart TB
         
         INPUT --> PHASE0
         P0_1 --> P0_2 --> P0_3
-        P0_3 -->|承認| PHASE1
+        P0_3 -->|承認| PHASE05
         P0_3 -->|修正| P0_2
+        
+        P05_1 --> P05_2 --> P05_3 --> P05_4
+        P05_4 -->|続行| PHASE1
+        P05_4 -->|調整| P05_1
+        P05_4 -->|中断| ABORT
         
         P1_1 --> P1_2 --> P1_3 --> P1_4 --> P1_5
         PHASE1 --> PHASE15
@@ -95,10 +107,13 @@ flowchart TB
     classDef outputNode fill:#e8f5e9,stroke:#388e3c
     
     class INPUT,OUTPUT outputNode
-    class P0_3,P3_2,P15_2,PHASE45 approvalNode
+    class P0_3,P05_4,P3_2,P15_2,PHASE45 approvalNode
 ```
 
 ---
+
+**変更点(v2.6)**:
+- **既存システム影響分析の追加**: Phase 0.5で既存詳細設計書・Issue・コードベースへの影響を分析。追加仕様時に整合性を確保。
 
 **変更点(v2.5)**:
 - **ASCII自動検証の追加**: Phase 1完了時に画面設計書のASCII禁止チェックを自動実行（grepベース）。
@@ -136,7 +151,127 @@ flowchart TB
 2. **ユーザー確認**:
    - 作成予定のドキュメント一覧（ファイルパス案）をユーザーに提示する。
    - 「不足している設計書はないか？」「追加すべき設計書はないか？」を確認する。
-   - ユーザーの承認（または修正指示）を得てから Phase 1 に進む。
+   - ユーザーの承認（または修正指示）を得てから Phase 0.5 に進む。
+
+---
+
+### Phase 0.5: 既存Issue・コードベースへの影響分析【追加仕様時必須】 (v2.6 NEW)
+
+> **トリガー**: 以下のいずれかに該当する場合
+> - `docs/designs/detailed/` に既存の詳細設計書が存在する
+> - GitHub に既存の関連Issueが存在する
+> - `src/` に既存のコードベースが存在する
+
+**目的**: 追加仕様が既存の実装・Issueと整合性があることを確認し、影響範囲を特定する。
+
+**実行内容:**
+
+#### 1. 既存詳細設計書との整合性確認
+
+```bash
+# 既存詳細設計書の特定
+ls docs/designs/detailed/*/README.md
+```
+
+| チェック項目 | 確認内容 | 矛盾時のアクション |
+|-------------|---------|------------------|
+| API互換性 | 既存APIシグネチャを破壊しないか | 後方互換性を維持 or マイグレーション計画 |
+| 型定義互換性 | 既存の型定義と矛盾しないか | 型拡張 or 新規型定義 |
+| エラーコード | 既存エラーコードと重複しないか | 連番を調整 |
+| テスト項目 | 既存テスト項目に影響しないか | 回帰テストを追加 |
+
+#### 2. 既存GitHub Issueとの関連確認
+
+```bash
+# 関連Issueの検索
+gh issue list --search "is:open label:implementation"
+gh issue list --search "is:open [関連キーワード]"
+```
+
+| チェック項目 | 確認内容 | アクション |
+|-------------|---------|----------|
+| 依存Issue | 新規Issueが既存Issueに依存するか | 依存関係を明記 |
+| 競合Issue | 同一ファイルを変更するIssueがあるか | 実装順序を調整 or マージ |
+| ブロックされるIssue | 新規Issueにより既存Issueがブロックされるか | 優先順位を調整 |
+
+#### 3. 既存コードベースへの影響分析
+
+```bash
+# 変更対象ファイルの特定
+# 新規機能が触れるモジュールを分析
+```
+
+| チェック項目 | 確認内容 | アクション |
+|-------------|---------|----------|
+| 既存モジュール変更 | 既存 `src/` のどのファイルを変更するか | 変更ファイル一覧を作成 |
+| 新規モジュール追加 | どこに新規ファイルを追加するか | ディレクトリ構造を確認 |
+| 依存関係変更 | `Cargo.toml` / `package.json` の変更があるか | 依存追加を明記 |
+| 公開API変更 | `lib.rs` / `mod.rs` の変更があるか | 公開範囲を確認 |
+
+#### 4. 影響分析レポート作成
+
+```markdown
+## 既存システムへの影響分析レポート
+
+### 関連する既存詳細設計書
+| ドキュメント | 関連度 | 影響 |
+|-------------|--------|------|
+| daemon-server.md | 高 | IPCメッセージ追加 |
+| cli-client.md | 中 | 新規コマンド追加 |
+
+### 関連する既存Issue
+| Issue | タイトル | 関連 | アクション |
+|-------|---------|------|----------|
+| #8 | メニューバーUI実装 | 依存 | #8完了後に着手 |
+| #15 | ドキュメント整備 | 影響なし | - |
+
+### コードベース影響分析
+| 影響種別 | ファイル/モジュール | 変更内容 |
+|---------|-------------------|---------|
+| 変更 | src/daemon/ipc.rs | 新規IPCメッセージ追加 |
+| 変更 | src/types/mod.rs | 新規型定義追加 |
+| 新規 | src/statistics/mod.rs | 統計モジュール新規作成 |
+| 依存追加 | Cargo.toml | `chrono` クレート追加 |
+
+### リスク評価
+| リスク | 影響度 | 対策 |
+|--------|--------|------|
+| 既存テストの破壊 | 中 | 回帰テストを先に実行 |
+| 型定義の互換性 | 低 | 拡張のみ、破壊的変更なし |
+```
+
+#### 5. ユーザー確認（影響がある場合）
+
+```markdown
+⚠️ 既存システムへの影響が検出されました。
+
+**影響サマリー**:
+- 既存設計書への影響: 2件
+- 関連Issue: 1件（依存関係あり）
+- 変更ファイル: 3件
+- 新規ファイル: 1件
+
+**依存関係**:
+- Issue #8（メニューバーUI）完了後に着手可能
+
+**対応方針を選択してください**:
+- `続行` → 影響を認識した上でPhase 1へ進む
+- `調整` → 依存関係・優先順位を調整
+- `中断` → 確認後に再開
+```
+
+**スキップ条件:**
+- `docs/designs/detailed/` に既存詳細設計書が存在しない（新規プロジェクト）
+- `src/` に既存コードが存在しない（新規プロジェクト）
+- ユーザーから「影響分析スキップ」と明示的に指示された場合
+
+**完了条件:**
+- 既存詳細設計書との整合性チェック完了
+- 既存Issueとの依存関係確認完了
+- コードベース影響分析完了
+- 影響がある場合はユーザー確認済み
+
+---
 
 ### Phase 1: 機能分割 & ドラフト作成
 
@@ -950,6 +1085,14 @@ def create_issues_with_optimal_granularity(design_doc):
 
 ## チェックリスト
 
+### Phase 0.5 完了条件（v2.6 NEW - 追加仕様時）
+
+- [ ] 既存詳細設計書との整合性チェック完了
+- [ ] 既存Issueとの依存関係確認完了
+- [ ] コードベース影響分析完了
+- [ ] 影響分析レポートが作成されている
+- [ ] 影響がある場合はユーザー確認済み
+
 ### Phase 1 完了条件
 
 - [ ] 全サブ機能に `詳細設計書.md` が存在する
@@ -1013,6 +1156,38 @@ def detailed_design_workflow(basic_path):
     # 4. ASK: "Is this list complete? Any missing documents?"
     # 5. WAIT for user confirmation or modification.
     # 6. IF modification requested -> Update list and re-confirm.
+    
+    # Phase 0.5: Impact Analysis (v2.6 NEW - 追加仕様時)
+    existing_detailed_docs = glob('docs/designs/detailed/*/README.md')
+    existing_issues = gh_issue_list('is:open label:implementation')
+    existing_codebase = path_exists('src/')
+    
+    if existing_detailed_docs or existing_issues or existing_codebase:
+        # 1. 既存詳細設計書との整合性確認
+        design_conflicts = check_design_compatibility(basic_path, existing_detailed_docs)
+        
+        # 2. 既存Issueとの依存関係確認
+        issue_dependencies = analyze_issue_dependencies(existing_issues)
+        
+        # 3. コードベース影響分析
+        code_impact = analyze_codebase_impact(basic_path, 'src/')
+        
+        # 4. 影響分析レポート作成 & ユーザー確認
+        if design_conflicts or issue_dependencies or code_impact:
+            user_choice = await_user_response("""
+                ⚠️ 既存システムへの影響が検出されました。
+                
+                対応方針を選択してください:
+                - `続行` → 影響を認識した上でPhase 1へ進む
+                - `調整` → 依存関係・優先順位を調整
+                - `中断` → 確認後に再開
+            """)
+            
+            if user_choice == "中断":
+                return cancelled("User requested pause for review")
+            if user_choice == "調整":
+                # 依存関係調整後に再実行
+                return retry_with_adjustments()
     
     # Phase 1: Design Documents
     # For each sub-feature in CONFIRMED list:

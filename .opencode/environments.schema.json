@@ -43,11 +43,11 @@
           },
           "status": {
             "type": "string",
-            "enum": ["active", "merged", "abandoned"],
+            "enum": ["active", "pr_created", "merged", "abandoned"],
             "description": "Environment lifecycle status"
           }
         },
-        "required": ["env_id", "branch", "created_at", "status"]
+        "required": ["env_id", "branch", "issue_number", "title", "status", "created_at", "last_used_at"]
       }
     }
   },

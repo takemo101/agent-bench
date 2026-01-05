@@ -16,11 +16,15 @@ flowchart TB
         subgraph REQ["/req-workflow<br/>要件定義完全ワークフロー"]
             direction TB
             REQ1["コンテキスト収集"]
+            REQ05{"Phase 0.5<br/>既存要件確認"}
             REQ2["要件定義書作成<br/>@req-writer"]
             REQ3{"レビューループ<br/>@req-reviewer<br/>最大5回"}
             REQ_OUT[["REQ-XXX.md<br/>8点以上"]]
             
-            REQ1 --> REQ2 --> REQ3
+            REQ1 --> REQ05
+            REQ05 -->|"追記/新規"| REQ2
+            REQ05 -->|"中断"| REQ_ABORT(("中断"))
+            REQ2 --> REQ3
             REQ3 -->|"不合格"| REQ2
             REQ3 -->|"合格"| REQ_OUT
         end
@@ -39,12 +43,17 @@ flowchart TB
         %% 基本設計ワークフロー
         subgraph BASIC["/basic-design-workflow<br/>基本設計完全ワークフロー"]
             direction TB
+            BASIC05A{"Phase 0.5-A<br/>技術スタック<br/>ヒアリング"}
+            BASIC05B{"Phase 0.5-B<br/>既存設計書確認"}
             BASIC1["技術スタック検証<br/>未定義は I-XXX"]
             BASIC2["基本設計書作成<br/>@basic-design-writer"]
             BASIC3{"レビューループ<br/>@basic-design-reviewer<br/>最大3回"}
             BASIC4["詳細設計準備<br/>フォルダ構造作成"]
             BASIC_OUT[["BASIC-XXX.md<br/>9点以上"]]
             
+            BASIC05A --> BASIC05B
+            BASIC05B -->|"統合/新規"| BASIC1
+            BASIC05B -->|"中断"| BASIC_ABORT(("中断"))
             BASIC1 --> BASIC2 --> BASIC3
             BASIC3 -->|"不合格"| BASIC2
             BASIC3 -->|"合格"| BASIC4 --> BASIC_OUT
@@ -53,6 +62,7 @@ flowchart TB
         %% 詳細設計ワークフロー
         subgraph DETAIL["/detailed-design-workflow<br/>詳細設計完全ワークフロー"]
             direction TB
+            DETAIL05{"Phase 0.5<br/>既存Issue・<br/>コードベース確認"}
             DETAIL1["機能分析<br/>画面/API/DB/外部連携"]
             DETAIL2["設計書作成<br/>@detailed-design-writer<br/>BE/FE/画面/DB/インフラ等"]
             DETAIL3["モックアップ生成<br/>Playwright<br/>【必須】"]
@@ -61,6 +71,8 @@ flowchart TB
             DETAIL6["Issue作成<br/>GitHub Issue化"]
             DETAIL_OUT[["詳細設計書群<br/>+ テスト項目書<br/>+ GitHub Issues"]]
             
+            DETAIL05 -->|"続行/調整"| DETAIL1
+            DETAIL05 -->|"中断"| DETAIL_ABORT(("中断"))
             DETAIL1 --> DETAIL2 --> DETAIL3 --> DETAIL4
             DETAIL4 -->|"不合格"| DETAIL2
             DETAIL4 -->|"合格"| DETAIL5 --> DETAIL6 --> DETAIL_OUT
@@ -375,6 +387,8 @@ container-use_environment_run_cmd(command="npm test")
 
 | 日付 | バージョン | 変更内容 |
 |:---|:---|:---|
+| 2026-01-05 | 3.13.0 | **environments.json必須化**: container-use操作時のenvironments.json読み書きを必須化。環境作成・PR作成・マージ・削除の各タイミングで更新を強制。セッション復旧時のenvironments.json参照を優先化 |
+| 2026-01-05 | 3.12.0 | **追加仕様対応**: 全設計ワークフロー（req/basic/detailed）にPhase 0.5（既存ドキュメント整合性確認）を追加。既存プロジェクトへの仕様追加時に、要件定義書・基本設計書・詳細設計書・Issue・コードベースとの整合性を自動チェックし、影響範囲を明確化 |
 | 2026-01-04 | 3.11.0 | **ワークフローレビュー反映**: PRマージフロー改善（クリーンアップ統合）、Related Documentsセクション追加、設計書更新手順追加、mockallクレート追加、現行テスト構造との差異明記 |
 | 2026-01-04 | 3.10.0 | **ワークフロー改善**: PRテンプレート必須化（`Closes #XX`自動クローズ）、リモートブランチ削除義務化、設計書同期ポリシー（`design-sync.md`）、環境依存テスト戦略（`testing-strategy.md`）を追加 |
 | 2026-01-04 | 3.9.0 | **障害復旧・セッション管理強化**: Docker障害時フォールバック手順、セッション復旧プロトコル、継続プロンプトベストプラクティスを `instructions/container-use.md` に追加 |

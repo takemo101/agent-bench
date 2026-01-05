@@ -22,6 +22,122 @@ If local build/test commands fail due to environment issues (e.g., wrong rustc v
 
 ---
 
+## environments.json Management (MANDATORY)
+
+**ALL container-use operations MUST update `.opencode/environments.json`** to track Issue/PR/Environment relationships.
+
+### File Location & Initialization
+
+```
+.opencode/environments.json
+```
+
+If the file does not exist, create it with the initial structure:
+
+```json
+{
+  "$schema": "./environments.schema.json",
+  "environments": []
+}
+```
+
+### Data Structure
+
+```json
+{
+  "env_id": "abc-123-def",
+  "branch": "feature/issue-42-user-auth",
+  "issue_number": 42,
+  "pr_number": null,
+  "title": "User authentication feature",
+  "status": "active",
+  "created_at": "2026-01-03T10:00:00Z",
+  "last_used_at": "2026-01-03T15:30:00Z"
+}
+```
+
+**Valid status values**: `active`, `pr_created`, `merged`, `abandoned`
+
+### MANDATORY Update Points (NON-NEGOTIABLE)
+
+| Trigger | Required Action | Fields to Update |
+|---------|----------------|------------------|
+| `environment_create` success | **ADD** new entry | `env_id`, `branch`, `issue_number`, `title`, `status: "active"`, `created_at`, `last_used_at` |
+| `environment_open` success | **UPDATE** existing entry | `last_used_at` |
+| `gh pr create` success | **UPDATE** existing entry | `pr_number`, `status: "pr_created"`, `last_used_at` |
+| PR merged | **UPDATE** existing entry | `status: "merged"`, `last_used_at` |
+| PR closed (without merge) | **UPDATE** existing entry | `status: "abandoned"`, `last_used_at` |
+| Environment deleted | **REMOVE** entry | Delete entire entry from array |
+
+### Implementation (Use Read/Edit Tools)
+
+**After `environment_create`:**
+```bash
+# 1. Read current file (or create if not exists)
+# 2. Add new entry to environments array
+# 3. Write updated file
+```
+
+Example entry to add:
+```json
+{
+  "env_id": "<returned_env_id>",
+  "branch": "feature/issue-<N>-<description>",
+  "issue_number": <N>,
+  "pr_number": null,
+  "title": "<environment_title>",
+  "status": "active",
+  "created_at": "<ISO8601_timestamp>",
+  "last_used_at": "<ISO8601_timestamp>"
+}
+```
+
+**After `gh pr create`:**
+```bash
+# 1. Read environments.json
+# 2. Find entry by env_id
+# 3. Update pr_number and status
+# 4. Write updated file
+```
+
+### Session Recovery (MANDATORY)
+
+When resuming work, **ALWAYS check environments.json FIRST**:
+
+```bash
+# 1. Read .opencode/environments.json
+# 2. Find entry matching the Issue number or PR number
+# 3. Use the stored env_id to reopen environment
+```
+
+**Decision Matrix based on environments.json:**
+
+| Entry Status | PR State | Action |
+|--------------|----------|--------|
+| `active` | No PR | Continue work, reopen with stored `env_id` |
+| `pr_created` | PR open | Reopen with stored `env_id` for fixes |
+| `pr_created` | PR merged | Update status to `merged`, delete env |
+| `merged` | N/A | No action needed (cleanup candidate) |
+| `abandoned` | N/A | Delete environment and entry |
+
+### Cleanup Policy
+
+| Condition | Action |
+|-----------|--------|
+| Status `merged` for 7+ days | Delete environment + remove entry |
+| Status `abandoned` | Delete immediately |
+| `last_used_at` > 30 days | Review and consider deletion |
+
+### Hard Blocks
+
+| Violation | Consequence |
+|-----------|-------------|
+| Creating environment without adding to environments.json | **FORBIDDEN** - breaks recovery |
+| Creating PR without updating environments.json | **FORBIDDEN** - loses tracking |
+| Deleting environment without removing from environments.json | **FORBIDDEN** - stale data |
+
+---
+
 ## When to Use Container-Use
 
 | Use Container-Use | Do NOT Use |
@@ -86,6 +202,22 @@ task(subagent_type="container-worker", prompt="Issue #3: Dashboard...")
 - Record the Environment ID returned by each worker
 - Upon completion, aggregate and present Environment Info for all environments to user
 
+### environments.json in Parallel Execution
+
+**Concurrency Rule**: Only the **main agent (Sisyphus)** updates `environments.json`.
+
+| Actor | Responsibility |
+|-------|---------------|
+| `container-worker` | Returns `env_id` in final response. Does NOT update environments.json |
+| Main agent | Collects all `env_id` values and updates environments.json after all workers complete |
+
+**Workflow**:
+1. Main agent creates todo list for parallel issues
+2. Delegates to `container-worker` agents (they work independently)
+3. Each worker returns: `env_id`, `branch`, `issue_number`, `pr_number` (if created)
+4. Main agent updates `environments.json` with all entries at once
+5. This avoids race conditions and file conflicts
+
 ### container-worker Delegation Prompt Structure
 
 When delegating via task, include the following information:
@@ -140,9 +272,11 @@ When encountering errors or crashes:
 
 4. **If environment is corrupted:**
    ```
-   a. Create a NEW environment with the same branch
-   b. The git state will be preserved from the remote
-   c. Continue work in the new environment
+   a. Update environments.json: mark old entry status as "abandoned"
+   b. Create a NEW environment with the same branch
+   c. Add new entry to environments.json with new env_id
+   d. The git state will be preserved from the remote
+   e. Continue work in the new environment
    ```
 
 ---
@@ -225,6 +359,27 @@ When resuming work from a previous session (e.g., after crash, timeout, or inter
 
 ### Mandatory State Verification (BEFORE any action)
 
+**Step 1: Check environments.json FIRST (MANDATORY)**
+
+```bash
+# Read environments.json to find existing environment for the Issue/PR
+cat .opencode/environments.json
+```
+
+Look for entries matching:
+- `issue_number` for the Issue you're working on
+- `pr_number` if a PR was already created
+- `status: "active"` or `status: "pr_created"` (usable environments)
+
+**Step 2: If environment found in environments.json**
+
+```bash
+# Use the env_id from environments.json to reopen
+container-use_environment_open(environment_id="<env_id from json>")
+```
+
+**Step 3: If NO environment found, verify other state**
+
 ```bash
 # 1. Check git state
 git status
@@ -237,13 +392,8 @@ gh pr view <pr-number>  # if PR exists
 # 3. Check Issue state
 gh issue view <issue-number>
 
-# 4. Check environment state (if using container-use)
+# 4. Check environment state via tool
 container-use_environment_list
-```
-
-**Note**: If using environments.json for tracking, also check:
-```bash
-cat .opencode/environments.json 2>/dev/null || echo "No environments.json"
 ```
 
 **Note**: `container-use_environment_list` is a tool call, not a bash command. Use the agent tool to check environment state.
@@ -316,9 +466,11 @@ Work is complete when ALL conditions are met:
 - [ ] Tests pass (if applicable)
 - [ ] Environment Info presented (format below)
 - [ ] PR created (using PR Description Template below)
+- [ ] **environments.json updated**: `pr_number` set, `status: "pr_created"`
 - [ ] **CI passed** (MUST wait: `gh pr checks <pr-number> --watch`)
 - [ ] PR merged (only AFTER CI passes)
 - [ ] Issue closed (automatic if `Closes #XX` used in PR)
+- [ ] **environments.json updated**: `status: "merged"` or entry removed
 - [ ] **Environment deleted**: `container-use delete <env_id>` (after PR merge)
 - [ ] **Remote branch deleted**: `git push origin --delete <branch-name>` (after PR merge)
 
@@ -328,18 +480,26 @@ Work is complete when ALL conditions are met:
 # 1. Create PR (with "Closes #XX" in body for auto-close)
 gh pr create --title "..." --body "..."
 
-# 2. Wait for CI to complete (NEVER skip this step)
+# 2. Update environments.json (MANDATORY)
+# - Set pr_number to the created PR number
+# - Set status to "pr_created"
+# - Update last_used_at
+
+# 3. Wait for CI to complete (NEVER skip this step)
 gh pr checks <pr-number> --watch
 
-# 3. Merge only after CI passes
+# 4. Merge only after CI passes
 gh pr merge <pr-number> --merge
 
-# 4. Verify issue auto-closed (if "Closes #XX" was used)
+# 5. Verify issue auto-closed (if "Closes #XX" was used)
 gh issue view <issue-number>  # Should show "CLOSED"
 
-# 5. Clean up
+# 6. Clean up
 git push origin --delete <branch-name>  # Delete remote branch
 container-use delete <env_id>           # Delete environment
+
+# 7. Update environments.json (MANDATORY)
+# - Either set status to "merged" OR remove entry entirely
 ```
 
 **Merge Strategy**:
@@ -415,6 +575,7 @@ After ANY container-use session, ALWAYS provide:
 | Run command | `environment_run_cmd` |
 | Save progress | `environment_checkpoint` |
 | **Delete environment** | `container-use delete <env_id>` (CLI) |
+| **Update environments.json** | `Read` + `Edit` tools on `.opencode/environments.json` |
 
 ### Environment Naming Convention
 
