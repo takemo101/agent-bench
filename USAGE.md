@@ -57,11 +57,13 @@ pomodoro status
 
 **出力例:**
 ```text
-State: Working 🍅
-Task: ドキュメント作成
-Time Remaining: 12:34
-Cycle: 1/4
+🍅 ポモドーロ #1 - 作業中
+  ████████████████████░░░░░░░░░░  15:30 / 25:00 (62%)
+
+  タスク: ドキュメント作成
 ```
+
+※ 作業中は赤/オレンジ、休憩中は緑/青、一時停止中は黄色で色分け表示されます。
 
 ### `install`
 LaunchAgentを使用して、ログイン時にデーモンを自動起動するように設定します。
@@ -89,7 +91,48 @@ pomodoro completions <SHELL>
 - zsh
 - fish
 
+### `sounds`
+利用可能なmacOSシステムサウンドの一覧を表示します。
+
+```bash
+pomodoro sounds
+```
+
+**出力例:**
+```text
+利用可能なサウンド:
+  - Basso
+  - Blow
+  - Funk
+  - Glass
+  - Hero
+  - Ping
+  - Pop
+  ...
+```
+
+### `config`
+サウンド設定を確認・変更します。
+
+```bash
+# 現在の設定を表示
+pomodoro config --show
+
+# 作業終了サウンドを "Pop" に変更
+pomodoro config --work-sound Pop
+
+# 休憩終了サウンドを "Basso" に変更
+pomodoro config --break-sound Basso
+```
+
 ## 設定オプション
 
-現在、設定ファイルによるカスタマイズ機能は開発中です。
-将来のバージョンで `~/.config/pomodoro/config.toml` による設定が可能になる予定です。
+### サウンド設定
+設定は `~/.pomodoro/sound-config.json` に保存されます。
+
+```json
+{
+  "work_end_sound": "Funk",
+  "break_end_sound": "Glass"
+}
+```
