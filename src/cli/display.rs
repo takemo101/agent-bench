@@ -2,13 +2,56 @@
 //!
 //! Provides colored and formatted output for CLI commands.
 
-use crate::types::IpcResponse;
+use crate::types::{IpcResponse, TimerPhase};
 use colored::Colorize;
+use indicatif::{ProgressBar, ProgressStyle};
+use std::str::FromStr;
 
 /// Display handler for CLI output
 pub struct Display;
 
 impl Display {
+    // Helper to create styled progress bar
+    fn create_progress_bar(
+        &self,
+        phase: TimerPhase,
+        total_seconds: u64,
+        remaining_seconds: u64,
+        task_name: Option<&str>,
+    ) -> ProgressBar {
+        let (color_code, icon, label) = match phase {
+            TimerPhase::Working => ("red", "🍅", "作業中"),
+            TimerPhase::Breaking => ("green", "☕", "休憩中"),
+            TimerPhase::LongBreaking => ("blue", "💤", "長期休憩"),
+            TimerPhase::Paused => ("yellow", "⏸", "一時停止"),
+            _ => ("white", "⏹", "停止"),
+        };
+
+        let template = format!(
+            "{{prefix}} [{{bar:40.{}}}] {{pos}}/{{len}} ({{percent}}%)\n{{msg}}",
+            color_code
+        );
+
+        let style = ProgressStyle::with_template(&template)
+            .unwrap()
+            .progress_chars("█░");
+
+        let bar = ProgressBar::new(total_seconds);
+        bar.set_style(style);
+        // Position in indicatif is usually "completed", so total - remaining
+        bar.set_position(total_seconds.saturating_sub(remaining_seconds));
+
+        // Prefix with color
+        let prefix = format!("{} {}", icon, label).color(color_code).to_string();
+        bar.set_prefix(prefix);
+
+        // Message (Task Name)
+        if let Some(name) = task_name {
+            bar.set_message(format!("タスク: {}", name.cyan()));
+        }
+
+        bar
+    }
     /// Create a new Display instance
     pub fn new() -> Self {
         Self
@@ -49,30 +92,45 @@ impl Display {
         if let Some(data) = response.data {
             println!("{}", "=== タイマー状態 ===".bold());
 
-            if let Some(state) = data.state {
-                let state_display = match state.as_str() {
-                    "working" => "作業中".green(),
-                    "breaking" => "休憩中".cyan(),
-                    "long_breaking" => "長い休憩中".cyan(),
-                    "paused" => "一時停止".yellow(),
-                    "stopped" => "停止中".red(),
-                    _ => state.normal(),
+            let phase = data
+                .state
+                .as_deref()
+                .and_then(|s| TimerPhase::from_str(s).ok())
+                .unwrap_or(TimerPhase::Stopped);
+
+            // インジケーター表示（durationがある場合のみ）
+            if let (Some(remaining), Some(duration)) = (data.remaining_seconds, data.duration) {
+                let bar = self.create_progress_bar(
+                    phase,
+                    duration as u64,
+                    remaining as u64,
+                    data.task_name.as_deref(),
+                );
+                bar.finish();
+            } else {
+                // 従来のテキスト表示（後方互換性のため）
+                let state_display = match phase {
+                    TimerPhase::Working => "作業中".green(),
+                    TimerPhase::Breaking => "休憩中".cyan(),
+                    TimerPhase::LongBreaking => "長い休憩中".cyan(),
+                    TimerPhase::Paused => "一時停止".yellow(),
+                    TimerPhase::Stopped => "停止中".red(),
                 };
                 println!("状態: {}", state_display);
-            }
 
-            if let Some(remaining) = data.remaining_seconds {
-                let minutes = remaining / 60;
-                let seconds = remaining % 60;
-                println!("残り時間: {}:{:02}", minutes, seconds);
+                if let Some(remaining) = data.remaining_seconds {
+                    let minutes = remaining / 60;
+                    let seconds = remaining % 60;
+                    println!("残り時間: {}:{:02}", minutes, seconds);
+                }
+
+                if let Some(task) = &data.task_name {
+                    println!("タスク: {}", task.cyan());
+                }
             }
 
             if let Some(count) = data.pomodoro_count {
                 println!("完了ポモドーロ: {} 🍅", count);
-            }
-
-            if let Some(task) = data.task_name {
-                println!("タスク: {}", task.cyan());
             }
         } else {
             println!("{}", response.message);
@@ -171,6 +229,7 @@ mod tests {
                 remaining_seconds: None,
                 pomodoro_count: None,
                 task_name: Some("Test task".to_string()),
+                duration: None,
             }),
         );
         // This should not panic
@@ -211,6 +270,7 @@ mod tests {
                 remaining_seconds: Some(1500),
                 pomodoro_count: Some(2),
                 task_name: Some("Test task".to_string()),
+                duration: Some(1500),
             }),
         );
         // This should not panic

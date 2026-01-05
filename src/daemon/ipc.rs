@@ -186,6 +186,7 @@ fn handle_start(engine: &mut TimerEngine, params: StartParams) -> IpcResponse {
                     remaining_seconds: Some(state.remaining_seconds),
                     pomodoro_count: Some(state.pomodoro_count),
                     task_name: state.task_name.clone(),
+                    duration: Some(state.current_duration()),
                 }),
             )
         }
@@ -227,6 +228,7 @@ fn handle_status(engine: &TimerEngine) -> IpcResponse {
             remaining_seconds: Some(state.remaining_seconds),
             pomodoro_count: Some(state.pomodoro_count),
             task_name: state.task_name.clone(),
+            duration: Some(state.current_duration()),
         }),
     )
 }

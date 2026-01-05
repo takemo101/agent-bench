@@ -41,6 +41,21 @@ impl TimerPhase {
     }
 }
 
+impl std::str::FromStr for TimerPhase {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "working" => Ok(TimerPhase::Working),
+            "breaking" => Ok(TimerPhase::Breaking),
+            "long_breaking" => Ok(TimerPhase::LongBreaking),
+            "paused" => Ok(TimerPhase::Paused),
+            "stopped" => Ok(TimerPhase::Stopped),
+            _ => Err(()),
+        }
+    }
+}
+
 /// タイマー設定
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PomodoroConfig {
@@ -209,6 +224,22 @@ impl TimerState {
     pub fn is_paused(&self) -> bool {
         self.phase == TimerPhase::Paused
     }
+
+    /// 現在のフェーズの合計時間（秒）を取得
+    pub fn current_duration(&self) -> u32 {
+        let phase = if self.phase == TimerPhase::Paused {
+            self.previous_phase.unwrap_or(TimerPhase::Stopped)
+        } else {
+            self.phase
+        };
+
+        match phase {
+            TimerPhase::Working => self.config.work_minutes * 60,
+            TimerPhase::Breaking => self.config.break_minutes * 60,
+            TimerPhase::LongBreaking => self.config.long_break_minutes * 60,
+            _ => 0,
+        }
+    }
 }
 
 // ============================================================================
@@ -274,6 +305,8 @@ pub struct ResponseData {
     pub pomodoro_count: Option<u32>,
     #[serde(rename = "taskName", skip_serializing_if = "Option::is_none")]
     pub task_name: Option<String>,
+    #[serde(rename = "duration", skip_serializing_if = "Option::is_none")]
+    pub duration: Option<u32>,
 }
 
 impl IpcResponse {
@@ -621,6 +654,7 @@ mod tests {
             remaining_seconds: Some(1500),
             pomodoro_count: Some(3),
             task_name: Some("開発".to_string()),
+            duration: Some(1500),
         };
         let response = IpcResponse::success("タイマーを開始しました", Some(data));
 
