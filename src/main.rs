@@ -91,6 +91,7 @@ async fn main() -> Result<()> {
         Commands::Daemon => {
             // デーモン設定の初期化
             let config = pomodoro::types::PomodoroConfig::default();
+            let sound_config = pomodoro::sound::SoundConfig::load().unwrap_or_default();
             let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
 
             // TimerEngineの初期化
@@ -177,7 +178,11 @@ async fn main() -> Result<()> {
                                     }
                                 }
 
-                                if let Err(e) = sound_player.play(&pomodoro::sound::SoundSource::Embedded { name: "default".to_string() }).await {
+                                let sound_name = &sound_config.work_end_sound;
+                                let source = pomodoro::sound::SoundSource::find_by_name(sound_name)
+                                    .unwrap_or(pomodoro::sound::SoundSource::Embedded { name: "default".to_string() });
+
+                                if let Err(e) = sound_player.play(&source).await {
                                     eprintln!("Failed to play sound: {}", e);
                                 }
                             }
@@ -189,7 +194,11 @@ async fn main() -> Result<()> {
                                     }
                                 }
 
-                                if let Err(e) = sound_player.play(&pomodoro::sound::SoundSource::Embedded { name: "default".to_string() }).await {
+                                let sound_name = &sound_config.break_end_sound;
+                                let source = pomodoro::sound::SoundSource::find_by_name(sound_name)
+                                    .unwrap_or(pomodoro::sound::SoundSource::Embedded { name: "default".to_string() });
+
+                                if let Err(e) = sound_player.play(&source).await {
                                     eprintln!("Failed to play sound: {}", e);
                                 }
                             }
