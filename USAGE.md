@@ -241,6 +241,17 @@ chmod +x ~/.pomodoro/scripts/slack-notify.sh
 - 1イベントあたり最大**10個**のフックを登録可能
 - タイムアウトは**1〜300秒**の範囲で指定
 
+### サンプルスクリプト
+
+`examples/hooks/` ディレクトリにサンプルスクリプトが用意されています:
+
+| スクリプト | 説明 |
+|-----------|------|
+| `slack-notify.sh` | Slack Webhook通知 |
+| `desktop-notify.sh` | macOSデスクトップ通知 |
+| `record-stats.sh` | CSV統計記録 |
+| `bgm-control.sh` | BGM自動制御（Spotify/Music） |
+
 ## 設定オプション
 
 ### サウンド設定
