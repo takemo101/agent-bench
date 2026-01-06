@@ -105,11 +105,19 @@ fn default_enabled() -> bool {
 }
 
 /// デフォルト設定
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HookDefaults {
     /// デフォルトタイムアウト（秒）
     #[serde(default = "default_timeout")]
     pub timeout_secs: u64,
+}
+
+impl Default for HookDefaults {
+    fn default() -> Self {
+        Self {
+            timeout_secs: default_timeout(),
+        }
+    }
 }
 
 impl Default for HookConfig {
