@@ -26,36 +26,27 @@ impl HookExecutor {
     /// ~/.pomodoro/hooks.json から設定を読み込む。
     /// ファイルが存在しない、または読み込みエラーの場合は無効状態で初期化する。
     pub fn new() -> Self {
-        let config_path = dirs::home_dir().map(|h| h.join(".pomodoro").join("hooks.json"));
-
-        let (config, enabled) = match config_path {
-            Some(path) => {
-                if path.exists() {
-                    match fs::read_to_string(&path) {
-                        Ok(content) => match serde_json::from_str::<HookConfig>(&content) {
-                            Ok(config) => (config, true),
-                            Err(e) => {
-                                warn!("フック設定のパースに失敗しました: {}", e);
-                                (HookConfig::default(), false)
-                            }
-                        },
-                        Err(e) => {
-                            warn!("フック設定ファイルの読み込みに失敗しました: {}", e);
-                            (HookConfig::default(), false)
-                        }
-                    }
-                } else {
-                    debug!("フック設定ファイルが見つかりません: {:?}", path);
-                    (HookConfig::default(), false)
+        match HookConfig::load() {
+            Ok(config) => {
+                let enabled = config.has_hooks();
+                debug!("フック設定を読み込みました: {} フック登録", config.hooks.len());
+                Self { config, enabled }
+            }
+            Err(HookConfigError::FileNotFound(path)) => {
+                debug!("フック設定ファイルが見つかりません: {:?}", path);
+                Self {
+                    config: HookConfig::default(),
+                    enabled: false,
                 }
             }
-            None => {
-                warn!("ホームディレクトリが特定できません");
-                (HookConfig::default(), false)
+            Err(e) => {
+                warn!("フック設定の読み込みに失敗しました: {}", e);
+                Self {
+                    config: HookConfig::default(),
+                    enabled: false,
+                }
             }
-        };
-
-        Self { config, enabled }
+        }
     }
 
     /// テスト用に設定を指定して作成
