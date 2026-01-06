@@ -3,6 +3,16 @@
   "_comment": "container-use環境のID追跡ファイル。PRレビュー後の環境再利用に使用。",
   "environments": [
     {
+      "env_id": "exotic-gorilla",
+      "branch": "feature/issue-103-hookexecutor-tests",
+      "issue_number": 103,
+      "pr_number": 112,
+      "title": "HookExecutor Unit Tests",
+      "status": "pr_created",
+      "created_at": "2026-01-06T14:30:00Z",
+      "last_used_at": "2026-01-06T14:45:00Z"
+    },
+    {
       "env_id": "first-flamingo",
       "branch": "feature/issue-92-hook-executor",
       "issue_number": 92,

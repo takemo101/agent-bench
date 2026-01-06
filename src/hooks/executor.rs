@@ -189,14 +189,25 @@ impl HookExecutor {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::{HookEvent, TimerPhase};
+    use chrono::Utc;
+    use std::io::Write;
+    use std::time::Duration;
     use tempfile::NamedTempFile;
+    use uuid::Uuid;
+
+    fn init_tracing() {
+        let _ = tracing_subscriber::fmt()
+            .with_test_writer()
+            .with_max_level(tracing::Level::DEBUG)
+            .try_init();
+    }
 
     #[test]
     fn test_validate_script_success() {
         let file = NamedTempFile::new().unwrap();
         let path = file.path();
 
-        // On Unix, we need to set executable permission
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
@@ -230,7 +241,6 @@ mod tests {
         let file = NamedTempFile::new().unwrap();
         let path = file.path();
 
-        // Remove executable permission
         use std::os::unix::fs::PermissionsExt;
         let mut perms = fs::metadata(path).unwrap().permissions();
         perms.set_mode(0o644);
@@ -239,5 +249,139 @@ mod tests {
         let result = HookExecutor::validate_script(path);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("実行権限がありません"));
+    }
+
+    fn create_test_config(script_path: &str) -> HookConfig {
+        let json = format!(
+            r#"{{
+            "version": "1.0",
+            "hooks": [
+                {{
+                    "name": "test_hook",
+                    "event": "work_start",
+                    "script": "{}",
+                    "timeout_secs": 5,
+                    "enabled": true
+                }}
+            ]
+        }}"#,
+            script_path
+        );
+        HookConfig::parse_and_validate(&json).unwrap()
+    }
+
+    #[tokio::test]
+    async fn test_execute_success() {
+        init_tracing();
+
+        let verify_file = NamedTempFile::new().unwrap();
+        let verify_path = verify_file.path().to_str().unwrap().to_string();
+
+        let mut script_file = NamedTempFile::new().unwrap();
+        let script_path = script_file.path().to_str().unwrap().to_string();
+
+        #[cfg(unix)]
+        {
+            writeln!(script_file, "#!/bin/sh\necho 'executed' > {}", verify_path).unwrap();
+            script_file.flush().unwrap(); // Flush buffer
+
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = fs::metadata(&script_path).unwrap().permissions();
+            perms.set_mode(0o755);
+            fs::set_permissions(&script_path, perms).unwrap();
+        }
+
+        let config = create_test_config(&script_path);
+        let executor = HookExecutor::with_config(config);
+
+        let context = HookContext {
+            event: HookEvent::WorkStart,
+            task_name: None,
+            phase: TimerPhase::Working.as_str().to_string(),
+            duration_secs: 1500,
+            elapsed_secs: 0,
+            remaining_secs: 1500,
+            cycle: 1,
+            total_cycles: 4,
+            timestamp: Utc::now(),
+            session_id: Uuid::new_v4(),
+        };
+
+        executor.execute(context);
+
+        // Wait enough time for process execution
+        tokio::time::sleep(Duration::from_millis(500)).await;
+
+        let content = fs::read_to_string(&verify_path).unwrap();
+        assert_eq!(content.trim(), "executed");
+    }
+
+    #[tokio::test]
+    async fn test_execute_disabled() {
+        init_tracing();
+
+        let verify_file = NamedTempFile::new().unwrap();
+        let verify_path = verify_file.path().to_str().unwrap().to_string();
+
+        let mut script_file = NamedTempFile::new().unwrap();
+        let script_path = script_file.path().to_str().unwrap().to_string();
+
+        #[cfg(unix)]
+        {
+            writeln!(script_file, "#!/bin/sh\necho 'executed' > {}", verify_path).unwrap();
+            script_file.flush().unwrap();
+
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = fs::metadata(&script_path).unwrap().permissions();
+            perms.set_mode(0o755);
+            fs::set_permissions(&script_path, perms).unwrap();
+        }
+
+        let config = create_test_config(&script_path);
+        let mut executor = HookExecutor::with_config(config);
+        executor.enabled = false;
+
+        let context = HookContext {
+            event: HookEvent::WorkStart,
+            task_name: None,
+            phase: TimerPhase::Working.as_str().to_string(),
+            duration_secs: 1500,
+            elapsed_secs: 0,
+            remaining_secs: 1500,
+            cycle: 1,
+            total_cycles: 4,
+            timestamp: Utc::now(),
+            session_id: Uuid::new_v4(),
+        };
+
+        executor.execute(context);
+
+        tokio::time::sleep(Duration::from_millis(200)).await;
+
+        let content = fs::read_to_string(&verify_path).unwrap();
+        assert_eq!(content, "");
+    }
+
+    #[tokio::test]
+    async fn test_execute_no_hooks() {
+        let config = HookConfig::default();
+        let executor = HookExecutor::with_config(config);
+
+        let context = HookContext {
+            event: HookEvent::WorkStart,
+            task_name: None,
+            phase: TimerPhase::Working.as_str().to_string(),
+            duration_secs: 1500,
+            elapsed_secs: 0,
+            remaining_secs: 1500,
+            cycle: 1,
+            total_cycles: 4,
+            timestamp: Utc::now(),
+            session_id: Uuid::new_v4(),
+        };
+
+        executor.execute(context);
+
+        tokio::time::sleep(Duration::from_millis(50)).await;
     }
 }
