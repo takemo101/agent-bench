@@ -3,11 +3,16 @@
 //! ポモドーロタイマーのコアロジックを提供する。
 //! 状態遷移、カウントダウン、イベント発火を担当する。
 
+use std::sync::Arc;
+
 use anyhow::{Context, Result};
+use chrono::Utc;
 use tokio::sync::mpsc;
 use tokio::time::{interval, Duration, Interval, MissedTickBehavior};
+use uuid::Uuid;
 
-use crate::types::{PomodoroConfig, StartParams, TimerPhase, TimerState};
+use crate::hooks::{HookContext, HookExecutor};
+use crate::types::{HookEvent, PomodoroConfig, StartParams, TimerPhase, TimerState};
 
 /// タイマーイベント
 ///
@@ -65,6 +70,10 @@ pub struct TimerEngine {
     state: TimerState,
     /// イベント送信チャネル
     event_tx: mpsc::UnboundedSender<TimerEvent>,
+    /// フック実行機能（オプション）
+    hook_executor: Option<Arc<HookExecutor>>,
+    /// セッションID（フック実行時に使用）
+    session_id: Uuid,
 }
 
 impl TimerEngine {
@@ -73,6 +82,21 @@ impl TimerEngine {
         Self {
             state: TimerState::new(config),
             event_tx,
+            hook_executor: Some(Arc::new(HookExecutor::new())),
+            session_id: Uuid::new_v4(),
+        }
+    }
+
+    #[cfg(test)]
+    pub fn new_without_hooks(
+        config: PomodoroConfig,
+        event_tx: mpsc::UnboundedSender<TimerEvent>,
+    ) -> Self {
+        Self {
+            state: TimerState::new(config),
+            event_tx,
+            hook_executor: None,
+            session_id: Uuid::new_v4(),
         }
     }
 
@@ -84,6 +108,31 @@ impl TimerEngine {
         let mut ticker = interval(Duration::from_secs(1));
         ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
         ticker
+    }
+
+    fn fire_hook(&self, event: HookEvent) {
+        if let Some(ref executor) = self.hook_executor {
+            let context = self.build_hook_context(event);
+            executor.execute(context);
+        }
+    }
+
+    fn build_hook_context(&self, event: HookEvent) -> HookContext {
+        let duration = self.state.current_duration();
+        let elapsed = duration.saturating_sub(self.state.remaining_seconds);
+
+        HookContext {
+            event,
+            task_name: self.state.task_name.clone(),
+            phase: self.state.phase.as_str().to_string(),
+            duration_secs: duration as u64,
+            elapsed_secs: elapsed as u64,
+            remaining_secs: self.state.remaining_seconds as u64,
+            cycle: self.state.pomodoro_count,
+            total_cycles: 4,
+            timestamp: Utc::now(),
+            session_id: self.session_id,
+        }
     }
 
     /// タイマーを開始
@@ -101,6 +150,8 @@ impl TimerEngine {
             })
             .context("Failed to send work started event")?;
 
+        self.fire_hook(HookEvent::WorkStart);
+
         Ok(())
     }
 
@@ -115,6 +166,8 @@ impl TimerEngine {
         self.event_tx
             .send(TimerEvent::Paused)
             .context("Failed to send paused event")?;
+
+        self.fire_hook(HookEvent::Pause);
 
         Ok(())
     }
@@ -131,6 +184,8 @@ impl TimerEngine {
             .send(TimerEvent::Resumed)
             .context("Failed to send resumed event")?;
 
+        self.fire_hook(HookEvent::Resume);
+
         Ok(())
     }
 
@@ -139,6 +194,8 @@ impl TimerEngine {
         if !self.state.is_running() && !self.state.is_paused() {
             anyhow::bail!("タイマーは実行されていません");
         }
+
+        self.fire_hook(HookEvent::Stop);
 
         self.state.stop();
 
@@ -189,10 +246,10 @@ impl TimerEngine {
     fn handle_timer_complete(&mut self) -> Result<()> {
         match self.state.phase {
             TimerPhase::Working => {
-                // ポモドーロカウントを増加
                 self.state.pomodoro_count += 1;
 
-                // 作業完了イベントを送信
+                self.fire_hook(HookEvent::WorkEnd);
+
                 self.event_tx
                     .send(TimerEvent::WorkCompleted {
                         pomodoro_count: self.state.pomodoro_count,
@@ -200,28 +257,39 @@ impl TimerEngine {
                     })
                     .context("Failed to send work completed event")?;
 
-                // 休憩を開始
                 self.state.start_breaking();
 
-                // 休憩開始イベントを送信
+                let is_long_break = self.state.phase == TimerPhase::LongBreaking;
+                let break_start_event = if is_long_break {
+                    HookEvent::LongBreakStart
+                } else {
+                    HookEvent::BreakStart
+                };
+                self.fire_hook(break_start_event);
+
                 self.event_tx
-                    .send(TimerEvent::BreakStarted {
-                        is_long_break: self.state.phase == TimerPhase::LongBreaking,
-                    })
+                    .send(TimerEvent::BreakStarted { is_long_break })
                     .context("Failed to send break started event")?;
             }
             TimerPhase::Breaking | TimerPhase::LongBreaking => {
                 let is_long_break = self.state.phase == TimerPhase::LongBreaking;
 
-                // 休憩完了イベントを送信
+                let break_end_event = if is_long_break {
+                    HookEvent::LongBreakEnd
+                } else {
+                    HookEvent::BreakEnd
+                };
+                self.fire_hook(break_end_event);
+
                 self.event_tx
                     .send(TimerEvent::BreakCompleted { is_long_break })
                     .context("Failed to send break completed event")?;
 
-                // 自動サイクルが有効な場合は次の作業を開始
                 if self.state.config.auto_cycle {
                     let task_name = self.state.task_name.clone();
                     self.state.start_working(task_name.clone());
+
+                    self.fire_hook(HookEvent::WorkStart);
 
                     self.event_tx
                         .send(TimerEvent::WorkStarted { task_name })
@@ -252,7 +320,7 @@ mod tests {
     fn create_test_engine() -> (TimerEngine, mpsc::UnboundedReceiver<TimerEvent>) {
         let (tx, rx) = mpsc::unbounded_channel();
         let config = PomodoroConfig::default();
-        let engine = TimerEngine::new(config, tx);
+        let engine = TimerEngine::new_without_hooks(config, tx);
         (engine, rx)
     }
 
@@ -260,7 +328,7 @@ mod tests {
         config: PomodoroConfig,
     ) -> (TimerEngine, mpsc::UnboundedReceiver<TimerEvent>) {
         let (tx, rx) = mpsc::unbounded_channel();
-        let engine = TimerEngine::new(config, tx);
+        let engine = TimerEngine::new_without_hooks(config, tx);
         (engine, rx)
     }
 
