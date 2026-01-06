@@ -96,6 +96,43 @@ pub struct HookDefinition {
     pub enabled: bool,
 }
 
+impl HookDefinition {
+    /// フック定義を検証する
+    pub fn validate(&self) -> Result<(), HookConfigError> {
+        // フック名の検証
+        if self.name.trim().is_empty() {
+            return Err(HookConfigError::ValidationError(
+                "フック名は必須です".to_string(),
+            ));
+        }
+
+        if self.name.len() > 100 {
+            return Err(HookConfigError::ValidationError(format!(
+                "フック名 '{}' が長すぎます (上限100文字)",
+                self.name
+            )));
+        }
+
+        // イベント名の検証
+        if !VALID_EVENTS.contains(&self.event.as_str()) {
+            return Err(HookConfigError::ValidationError(format!(
+                "無効なイベント名: '{}'. 許可されるイベント: {:?}",
+                self.event, VALID_EVENTS
+            )));
+        }
+
+        // タイムアウトの検証
+        if self.timeout_secs < MIN_TIMEOUT_SECS || self.timeout_secs > MAX_TIMEOUT_SECS {
+            return Err(HookConfigError::ValidationError(format!(
+                "フック '{}' のタイムアウト値 {} が範囲外です (許可: {}-{}秒)",
+                self.name, self.timeout_secs, MIN_TIMEOUT_SECS, MAX_TIMEOUT_SECS
+            )));
+        }
+
+        Ok(())
+    }
+}
+
 fn default_timeout() -> u64 {
     30
 }
@@ -180,21 +217,8 @@ impl HookConfig {
         let mut event_counts: HashMap<&str, usize> = HashMap::new();
 
         for hook in &self.hooks {
-            // イベント名の検証
-            if !VALID_EVENTS.contains(&hook.event.as_str()) {
-                return Err(HookConfigError::ValidationError(format!(
-                    "無効なイベント名: '{}'. 許可されるイベント: {:?}",
-                    hook.event, VALID_EVENTS
-                )));
-            }
-
-            // タイムアウトの検証
-            if hook.timeout_secs < MIN_TIMEOUT_SECS || hook.timeout_secs > MAX_TIMEOUT_SECS {
-                return Err(HookConfigError::ValidationError(format!(
-                    "フック '{}' のタイムアウト値 {} が範囲外です (許可: {}-{}秒)",
-                    hook.name, hook.timeout_secs, MIN_TIMEOUT_SECS, MAX_TIMEOUT_SECS
-                )));
-            }
+            // 個別のフック定義を検証
+            hook.validate()?;
 
             // イベントごとのフック数をカウント
             *event_counts.entry(hook.event.as_str()).or_insert(0) += 1;
@@ -570,5 +594,77 @@ mod tests {
 
         let empty_config = HookConfig::default();
         assert!(!empty_config.has_hooks());
+    }
+
+    #[test]
+    fn test_validate_empty_hook_name() {
+        let json = r#"{
+            "version": "1.0",
+            "hooks": [
+                {
+                    "name": "",
+                    "event": "work_end",
+                    "script": "/usr/local/bin/test.sh"
+                }
+            ]
+        }"#;
+
+        let result = HookConfig::parse_and_validate(json);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("フック名は必須"));
+    }
+
+    #[test]
+    fn test_validate_hook_name_too_long() {
+        let long_name = "a".repeat(101);
+        let json = format!(
+            r#"{{
+            "version": "1.0",
+            "hooks": [
+                {{
+                    "name": "{}",
+                    "event": "work_end",
+                    "script": "/usr/local/bin/test.sh"
+                }}
+            ]
+        }}"#,
+            long_name
+        );
+
+        let result = HookConfig::parse_and_validate(&json);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("長すぎます"));
+    }
+
+    #[test]
+    fn test_validate_global_timeout_too_low() {
+        let json = r#"{
+            "version": "1.0",
+            "defaults": {
+                "timeout_secs": 0
+            }
+        }"#;
+
+        let result = HookConfig::parse_and_validate(json);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("デフォルトタイムアウト値"));
+    }
+
+    #[test]
+    fn test_validate_global_timeout_too_high() {
+        let json = r#"{
+            "version": "1.0",
+            "defaults": {
+                "timeout_secs": 301
+            }
+        }"#;
+
+        let result = HookConfig::parse_and_validate(json);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("デフォルトタイムアウト値"));
     }
 }
