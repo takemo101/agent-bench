@@ -1,4 +1,4 @@
-use crate::hooks::{HookConfig, HookContext, HookDefinition};
+use crate::hooks::{HookConfig, HookConfigError, HookContext, HookDefinition};
 use std::fs;
 use std::path::Path;
 use std::process::Stdio;
