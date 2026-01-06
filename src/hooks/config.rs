@@ -228,14 +228,14 @@ impl HookConfig {
         let path_str = path.to_string_lossy();
 
         // チルダ展開
-        let expanded = if path_str.starts_with("~/") {
+        let expanded = if let Some(stripped) = path_str.strip_prefix("~/") {
             let home = dirs::home_dir().ok_or_else(|| {
                 HookConfigError::IoError(std::io::Error::new(
                     std::io::ErrorKind::NotFound,
                     "ホームディレクトリが見つかりません",
                 ))
             })?;
-            home.join(&path_str[2..])
+            home.join(stripped)
         } else {
             path.to_path_buf()
         };
