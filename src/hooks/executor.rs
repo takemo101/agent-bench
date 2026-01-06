@@ -1,4 +1,4 @@
-use crate::hooks::{HookConfig, HookContext, HookDefinition};
+use crate::hooks::{HookConfig, HookConfigError, HookContext, HookDefinition};
 use std::fs;
 use std::path::Path;
 use std::process::Stdio;
@@ -26,36 +26,30 @@ impl HookExecutor {
     /// ~/.pomodoro/hooks.json から設定を読み込む。
     /// ファイルが存在しない、または読み込みエラーの場合は無効状態で初期化する。
     pub fn new() -> Self {
-        let config_path = dirs::home_dir().map(|h| h.join(".pomodoro").join("hooks.json"));
-
-        let (config, enabled) = match config_path {
-            Some(path) => {
-                if path.exists() {
-                    match fs::read_to_string(&path) {
-                        Ok(content) => match serde_json::from_str::<HookConfig>(&content) {
-                            Ok(config) => (config, true),
-                            Err(e) => {
-                                warn!("フック設定のパースに失敗しました: {}", e);
-                                (HookConfig::default(), false)
-                            }
-                        },
-                        Err(e) => {
-                            warn!("フック設定ファイルの読み込みに失敗しました: {}", e);
-                            (HookConfig::default(), false)
-                        }
-                    }
-                } else {
-                    debug!("フック設定ファイルが見つかりません: {:?}", path);
-                    (HookConfig::default(), false)
+        match HookConfig::load() {
+            Ok(config) => {
+                let enabled = config.has_hooks();
+                debug!(
+                    "フック設定を読み込みました: {} フック登録",
+                    config.hooks.len()
+                );
+                Self { config, enabled }
+            }
+            Err(HookConfigError::FileNotFound(path)) => {
+                debug!("フック設定ファイルが見つかりません: {:?}", path);
+                Self {
+                    config: HookConfig::default(),
+                    enabled: false,
                 }
             }
-            None => {
-                warn!("ホームディレクトリが特定できません");
-                (HookConfig::default(), false)
+            Err(e) => {
+                warn!("フック設定の読み込みに失敗しました: {}", e);
+                Self {
+                    config: HookConfig::default(),
+                    enabled: false,
+                }
             }
-        };
-
-        Self { config, enabled }
+        }
     }
 
     /// テスト用に設定を指定して作成
@@ -73,24 +67,21 @@ impl HookExecutor {
             return;
         }
 
-        let event_name = context.event.as_str().to_string();
-        if let Some(hooks) = self.config.hooks.get(&event_name) {
+        if let Some(hooks) = self.config.get_hooks_for_event(&context.event) {
             if hooks.is_empty() {
                 return;
             }
 
             let hooks = hooks.clone();
-            let global_timeout = self.config.global_timeout;
+            let default_timeout = self.config.default_timeout();
             let context = context.clone();
 
             // Fire-and-forget execution
             tokio::spawn(async move {
                 for hook in hooks {
-                    if !hook.enabled {
-                        continue;
-                    }
-
-                    if let Err(e) = Self::execute_single_hook(&hook, &context, global_timeout).await
+                    // 注: get_hooks_for_event は既に enabled=true のみを返す
+                    if let Err(e) =
+                        Self::execute_single_hook(&hook, &context, default_timeout).await
                     {
                         error!("フック実行エラー ({}): {}", hook.name, e);
                     }
@@ -103,11 +94,12 @@ impl HookExecutor {
     async fn execute_single_hook(
         hook: &HookDefinition,
         context: &HookContext,
-        global_timeout: u64,
+        _default_timeout: u64,
     ) -> Result<(), String> {
         Self::validate_script(&hook.script)?;
 
-        let timeout_secs = hook.timeout.unwrap_or(global_timeout);
+        // 各フックは必ず timeout_secs を持つ（デフォルト値30秒）
+        let timeout_secs = hook.timeout_secs;
         let env_vars = context.to_env_vars();
 
         info!("フック実行開始: {} (timeout: {}s)", hook.name, timeout_secs);
