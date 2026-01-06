@@ -64,24 +64,21 @@ impl HookExecutor {
             return;
         }
 
-        let event_name = context.event.as_str().to_string();
-        if let Some(hooks) = self.config.hooks.get(&event_name) {
+        if let Some(hooks) = self.config.get_hooks_for_event(&context.event) {
             if hooks.is_empty() {
                 return;
             }
 
             let hooks = hooks.clone();
-            let global_timeout = self.config.global_timeout;
+            let default_timeout = self.config.default_timeout();
             let context = context.clone();
 
             // Fire-and-forget execution
             tokio::spawn(async move {
                 for hook in hooks {
-                    if !hook.enabled {
-                        continue;
-                    }
-
-                    if let Err(e) = Self::execute_single_hook(&hook, &context, global_timeout).await
+                    // 注: get_hooks_for_event は既に enabled=true のみを返す
+                    if let Err(e) =
+                        Self::execute_single_hook(&hook, &context, default_timeout).await
                     {
                         error!("フック実行エラー ({}): {}", hook.name, e);
                     }
