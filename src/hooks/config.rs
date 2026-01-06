@@ -96,6 +96,42 @@ pub struct HookDefinition {
     pub enabled: bool,
 }
 
+    /// フック定義を検証する
+    pub fn validate(&self) -> Result<(), HookConfigError> {
+        // フック名の検証
+        if self.name.trim().is_empty() {
+            return Err(HookConfigError::ValidationError(
+                "フック名は必須です".to_string(),
+            ));
+        }
+
+        if self.name.len() > 100 {
+            return Err(HookConfigError::ValidationError(format!(
+                "フック名 '{}' が長すぎます (上限100文字)",
+                self.name
+            )));
+        }
+
+        // イベント名の検証
+        if !VALID_EVENTS.contains(&self.event.as_str()) {
+            return Err(HookConfigError::ValidationError(format!(
+                "無効なイベント名: '{}'. 許可されるイベント: {:?}",
+                self.event, VALID_EVENTS
+            )));
+        }
+
+        // タイムアウトの検証
+        if self.timeout_secs < MIN_TIMEOUT_SECS || self.timeout_secs > MAX_TIMEOUT_SECS {
+            return Err(HookConfigError::ValidationError(format!(
+                "フック '{}' のタイムアウト値 {} が範囲外です (許可: {}-{}秒)",
+                self.name, self.timeout_secs, MIN_TIMEOUT_SECS, MAX_TIMEOUT_SECS
+            )));
+        }
+
+        Ok(())
+    }
+}
+
 fn default_timeout() -> u64 {
     30
 }
@@ -180,21 +216,8 @@ impl HookConfig {
         let mut event_counts: HashMap<&str, usize> = HashMap::new();
 
         for hook in &self.hooks {
-            // イベント名の検証
-            if !VALID_EVENTS.contains(&hook.event.as_str()) {
-                return Err(HookConfigError::ValidationError(format!(
-                    "無効なイベント名: '{}'. 許可されるイベント: {:?}",
-                    hook.event, VALID_EVENTS
-                )));
-            }
-
-            // タイムアウトの検証
-            if hook.timeout_secs < MIN_TIMEOUT_SECS || hook.timeout_secs > MAX_TIMEOUT_SECS {
-                return Err(HookConfigError::ValidationError(format!(
-                    "フック '{}' のタイムアウト値 {} が範囲外です (許可: {}-{}秒)",
-                    hook.name, hook.timeout_secs, MIN_TIMEOUT_SECS, MAX_TIMEOUT_SECS
-                )));
-            }
+            // 個別のフック定義を検証
+            hook.validate()?;
 
             // イベントごとのフック数をカウント
             *event_counts.entry(hook.event.as_str()).or_insert(0) += 1;
