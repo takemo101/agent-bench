@@ -594,4 +594,76 @@ mod tests {
         let empty_config = HookConfig::default();
         assert!(!empty_config.has_hooks());
     }
+
+    #[test]
+    fn test_validate_empty_hook_name() {
+        let json = r#"{
+            "version": "1.0",
+            "hooks": [
+                {
+                    "name": "",
+                    "event": "work_end",
+                    "script": "/usr/local/bin/test.sh"
+                }
+            ]
+        }"#;
+
+        let result = HookConfig::parse_and_validate(json);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("フック名は必須"));
+    }
+
+    #[test]
+    fn test_validate_hook_name_too_long() {
+        let long_name = "a".repeat(101);
+        let json = format!(
+            r#"{{
+            "version": "1.0",
+            "hooks": [
+                {{
+                    "name": "{}",
+                    "event": "work_end",
+                    "script": "/usr/local/bin/test.sh"
+                }}
+            ]
+        }}"#,
+            long_name
+        );
+
+        let result = HookConfig::parse_and_validate(&json);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("長すぎます"));
+    }
+
+    #[test]
+    fn test_validate_global_timeout_too_low() {
+        let json = r#"{
+            "version": "1.0",
+            "defaults": {
+                "timeout_secs": 0
+            }
+        }"#;
+
+        let result = HookConfig::parse_and_validate(json);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("デフォルトタイムアウト値"));
+    }
+
+    #[test]
+    fn test_validate_global_timeout_too_high() {
+        let json = r#"{
+            "version": "1.0",
+            "defaults": {
+                "timeout_secs": 301
+            }
+        }"#;
+
+        let result = HookConfig::parse_and_validate(json);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("デフォルトタイムアウト値"));
+    }
 }
