@@ -20,7 +20,7 @@ async fn test_timer_engine_fires_hooks() -> Result<()> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        
+
         // Write script content
         writeln!(script_file, "#!/bin/sh\necho 'executed' > {}", verify_path)?;
         script_file.flush()?;
@@ -30,7 +30,7 @@ async fn test_timer_engine_fires_hooks() -> Result<()> {
         perms.set_mode(0o755);
         fs::set_permissions(&script_path, perms)?;
     }
-    
+
     // Windows support omitted for this specific test as it relies on sh
     #[cfg(not(unix))]
     return Ok(());
@@ -61,7 +61,7 @@ async fn test_timer_engine_fires_hooks() -> Result<()> {
     let hook_executor = Arc::new(HookExecutor::with_config(hook_config));
     let (event_tx, mut event_rx) = mpsc::unbounded_channel();
     let config = PomodoroConfig::default();
-    
+
     let mut engine = TimerEngine::new_with_hook_executor(config, event_tx, hook_executor);
 
     // 4. Start timer (triggers WorkStart -> Hook)
@@ -87,7 +87,10 @@ async fn test_timer_engine_fires_hooks() -> Result<()> {
         }
     }
 
-    assert!(success, "Hook script was not executed within timeout (2 seconds)");
+    assert!(
+        success,
+        "Hook script was not executed within timeout (2 seconds)"
+    );
 
     Ok(())
 }
