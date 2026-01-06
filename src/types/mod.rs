@@ -56,6 +56,47 @@ impl std::str::FromStr for TimerPhase {
     }
 }
 
+/// フックイベント
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HookEvent {
+    /// 作業開始
+    WorkStart,
+    /// 作業終了
+    WorkEnd,
+    /// 休憩開始
+    BreakStart,
+    /// 休憩終了
+    BreakEnd,
+    /// 長い休憩開始
+    LongBreakStart,
+    /// 長い休憩終了
+    LongBreakEnd,
+    /// 一時停止
+    Pause,
+    /// 再開
+    Resume,
+    /// 停止
+    Stop,
+}
+
+impl HookEvent {
+    /// イベント名を取得
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            HookEvent::WorkStart => "work_start",
+            HookEvent::WorkEnd => "work_end",
+            HookEvent::BreakStart => "break_start",
+            HookEvent::BreakEnd => "break_end",
+            HookEvent::LongBreakStart => "long_break_start",
+            HookEvent::LongBreakEnd => "long_break_end",
+            HookEvent::Pause => "pause",
+            HookEvent::Resume => "resume",
+            HookEvent::Stop => "stop",
+        }
+    }
+}
+
 /// タイマー設定
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PomodoroConfig {
