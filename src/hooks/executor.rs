@@ -252,7 +252,8 @@ mod tests {
     }
 
     fn create_test_config(script_path: &str) -> HookConfig {
-        let json = format!(r#"{{
+        let json = format!(
+            r#"{{
             "version": "1.0",
             "hooks": [
                 {{
@@ -263,14 +264,16 @@ mod tests {
                     "enabled": true
                 }}
             ]
-        }}"#, script_path);
+        }}"#,
+            script_path
+        );
         HookConfig::parse_and_validate(&json).unwrap()
     }
 
     #[tokio::test]
     async fn test_execute_success() {
         init_tracing();
-        
+
         let verify_file = NamedTempFile::new().unwrap();
         let verify_path = verify_file.path().to_str().unwrap().to_string();
 
@@ -281,7 +284,7 @@ mod tests {
         {
             writeln!(script_file, "#!/bin/sh\necho 'executed' > {}", verify_path).unwrap();
             script_file.flush().unwrap(); // Flush buffer
-            
+
             use std::os::unix::fs::PermissionsExt;
             let mut perms = fs::metadata(&script_path).unwrap().permissions();
             perms.set_mode(0o755);
@@ -316,7 +319,7 @@ mod tests {
     #[tokio::test]
     async fn test_execute_disabled() {
         init_tracing();
-        
+
         let verify_file = NamedTempFile::new().unwrap();
         let verify_path = verify_file.path().to_str().unwrap().to_string();
 
@@ -327,7 +330,7 @@ mod tests {
         {
             writeln!(script_file, "#!/bin/sh\necho 'executed' > {}", verify_path).unwrap();
             script_file.flush().unwrap();
-            
+
             use std::os::unix::fs::PermissionsExt;
             let mut perms = fs::metadata(&script_path).unwrap().permissions();
             perms.set_mode(0o755);
