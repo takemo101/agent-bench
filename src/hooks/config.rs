@@ -96,6 +96,7 @@ pub struct HookDefinition {
     pub enabled: bool,
 }
 
+impl HookDefinition {
     /// フック定義を検証する
     pub fn validate(&self) -> Result<(), HookConfigError> {
         // フック名の検証
