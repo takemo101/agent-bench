@@ -91,11 +91,12 @@ impl HookExecutor {
     async fn execute_single_hook(
         hook: &HookDefinition,
         context: &HookContext,
-        global_timeout: u64,
+        _default_timeout: u64,
     ) -> Result<(), String> {
         Self::validate_script(&hook.script)?;
 
-        let timeout_secs = hook.timeout.unwrap_or(global_timeout);
+        // 各フックは必ず timeout_secs を持つ（デフォルト値30秒）
+        let timeout_secs = hook.timeout_secs;
         let env_vars = context.to_env_vars();
 
         info!("フック実行開始: {} (timeout: {}s)", hook.name, timeout_secs);
