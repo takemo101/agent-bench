@@ -202,23 +202,26 @@ impl Display {
             }
 
             if let (Some(remaining), Some(duration)) = (data.remaining_seconds, data.duration) {
-                // バーの作成または更新
+                let duration_u64 = duration as u64;
+                let remaining_u64 = remaining as u64;
+
                 let b = if let Some(b) = bar {
+                    if b.length() != Some(duration_u64) {
+                        b.set_length(duration_u64);
+                    }
                     b
                 } else {
-                    // 初回作成
                     let new_bar = self.create_progress_bar(
                         phase,
-                        duration as u64,
-                        remaining as u64,
+                        duration_u64,
+                        remaining_u64,
                         data.task_name.as_deref(),
                     );
                     *bar = Some(new_bar);
                     bar.as_mut().unwrap()
                 };
 
-                // 位置更新
-                b.set_position(duration as u64 - remaining as u64);
+                b.set_position(duration_u64.saturating_sub(remaining_u64));
 
                 // フェーズ表示（Prefix）の更新
                 let (color_code, icon, label) = match phase {
