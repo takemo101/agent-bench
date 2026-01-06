@@ -29,7 +29,10 @@ impl HookExecutor {
         match HookConfig::load() {
             Ok(config) => {
                 let enabled = config.has_hooks();
-                debug!("フック設定を読み込みました: {} フック登録", config.hooks.len());
+                debug!(
+                    "フック設定を読み込みました: {} フック登録",
+                    config.hooks.len()
+                );
                 Self { config, enabled }
             }
             Err(HookConfigError::FileNotFound(path)) => {
