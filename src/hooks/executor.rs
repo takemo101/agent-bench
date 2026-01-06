@@ -53,7 +53,6 @@ impl HookExecutor {
     }
 
     /// テスト用に設定を指定して作成
-    #[cfg(test)]
     pub fn with_config(config: HookConfig) -> Self {
         Self {
             config,

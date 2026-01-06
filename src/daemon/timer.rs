@@ -100,6 +100,18 @@ impl TimerEngine {
         }
     }
 
+    pub fn new_with_hook_executor(
+        config: PomodoroConfig,
+        event_tx: mpsc::UnboundedSender<TimerEvent>,
+        hook_executor: Arc<HookExecutor>,
+    ) -> Self {
+        Self {
+            state: TimerState::new(config),
+            event_tx,
+            hook_executor: Some(hook_executor),
+            session_id: Uuid::new_v4(),
+        }
+    }
     /// タイマー用のIntervalを作成
     ///
     /// 1秒間隔でティックを発生させるIntervalを返す。
