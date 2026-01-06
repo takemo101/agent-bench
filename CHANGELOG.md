@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-01-07
+
+### Added
+- **イベントフック機能**: タイマーイベント発生時にカスタムBashスクリプトを非同期実行 (#91)
+  - 9種類のイベントタイプをサポート: `work_start`, `work_end`, `break_start`, `break_end`, `long_break_start`, `long_break_end`, `pause`, `resume`, `stop`
+  - `~/.pomodoro/hooks.json` による設定管理
+  - 1イベントあたり最大10個のフックを登録可能
+  - 11種類の環境変数でコンテキスト情報を提供
+  - タイムアウト制御（1〜300秒）
+  - fire-and-forget 方式の非同期実行（タイマーをブロックしない）
+- **サンプルスクリプト**: イベントフック用サンプルスクリプト4種を追加 (#107)
+  - Slack通知 (`examples/hooks/slack-notify.sh`)
+  - デスクトップ通知 (`examples/hooks/desktop-notify.sh`)
+  - 統計記録 (`examples/hooks/record-stats.sh`)
+  - BGM制御 (`examples/hooks/bgm-control.sh`)
+
+### Changed
+- **ドキュメント更新**: USAGE.md, README.md にイベントフック機能のドキュメントを追加 (#105, #106)
+
 ## [0.2.0] - 2026-01-06
 
 ### Added
