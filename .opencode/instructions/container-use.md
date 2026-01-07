@@ -443,68 +443,25 @@ When creating continuation prompts for future sessions:
 
 **Anti-pattern**: Blindly executing continuation prompts without state verification.
 
-### Session Summary Auto-Save (NEW)
+### Session State Management
 
-セッション終了時に Supermemory へ自動保存し、次回セッションでの復旧を確実にします。
+#### Single Source of Truth: environments.json
 
-#### 保存タイミング
+**environments.json が唯一の状態管理ファイルです。** 他のストレージ（Supermemory等）は補助的なログとして使用し、復旧時には参照しません。
 
-| イベント | 保存内容 | 保存先 |
-|---------|---------|--------|
-| **Issue 実装開始** | Issue番号、ブランチ名、env_id | environments.json + Supermemory |
-| **PR 作成完了** | PR番号、レビュースコア、CI状態 | environments.json + Supermemory |
-| **セッション中断** | 現在の作業状態、TODO残項目 | Supermemory (Session Summary) |
-| **エラー発生** | エラー内容、復旧手順 | Supermemory |
+| 情報源 | 役割 | 復旧時の使用 |
+|-------|------|-------------|
+| **environments.json** | 状態管理（SSOT） | ✅ 最優先で参照 |
+| Git状態（remote/local） | 実際のコード状態 | ✅ 検証用に参照 |
+| Supermemory | 人間向けのログ | ❌ 自動復旧には使用しない |
 
-#### 自動保存フォーマット
-
-```markdown
-[Session Summary]
-
-## Summary: {作業内容の要約}
-
-### What We Did
-1. {完了した作業1}
-2. {完了した作業2}
-
-### Current State
-- **Issue**: #{issue_id}
-- **Branch**: {branch_name}
-- **Environment ID**: {env_id}
-- **PR**: #{pr_number} (if created)
-- **CI Status**: {passing/failing/pending}
-
-### Files Modified
-- {file1}
-- {file2}
-
-### Remaining Tasks
-- [ ] {残タスク1}
-- [ ] {残タスク2}
-
-### Recovery Commands
-```bash
-# 1. environments.json から env_id を取得
-cat .opencode/environments.json | jq '.environments[] | select(.issue_number == {issue_id})'
-
-# 2. 環境を再開
-container-use_environment_open(environment_id="{env_id}")
-
-# 3. 状態を確認
-gh issue view {issue_id}
-gh pr view {pr_number}  # if PR exists
-```
-```
-
-#### 復旧時の自動検索
-
-次回セッション開始時、関連するメモリを自動検索：
+#### 復旧ロジック（簡素化版）
 
 ```python
-def auto_recover_session(issue_id: int) -> SessionState | None:
-    """前回セッションの状態を自動復旧"""
+def recover_session(issue_id: int) -> SessionState | None:
+    """セッション状態を復旧（environments.json のみ使用）"""
     
-    # 1. environments.json をチェック（最優先）
+    # environments.json から検索
     env_entry = find_environment_by_issue(issue_id)
     if env_entry:
         return SessionState(
@@ -514,17 +471,23 @@ def auto_recover_session(issue_id: int) -> SessionState | None:
             status=env_entry["status"]
         )
     
-    # 2. Supermemory から検索（フォールバック）
-    memory_result = supermemory(
-        mode="search",
-        query=f"Issue #{issue_id} Session Summary",
+    return None  # 環境なし → 新規作成が必要
+```
+
+#### Supermemory の使用（任意・補助的）
+
+Supermemory は**人間が後で参照するためのログ**として使用できます。自動復旧には使用しません。
+
+```python
+def log_session_summary_to_supermemory(issue_id: int, summary: str):
+    """人間向けのセッションログを保存（任意）"""
+    supermemory(
+        mode="add",
+        content=f"[Session Log] Issue #{issue_id}\n\n{summary}",
+        type="conversation",
         scope="project"
     )
-    
-    if memory_result.get("results"):
-        return parse_session_summary(memory_result["results"][0])
-    
-    return None  # 前回セッションなし
+    # 注意: このログは自動復旧には使用されない
 ```
 
 ---
@@ -572,14 +535,14 @@ gh pr create --title "..." --body "..."
 # 3. Wait for CI to complete (NEVER skip this step)
 gh pr checks <pr-number> --watch
 
-# 4. Merge only after CI passes
-gh pr merge <pr-number> --merge
+# 4. Merge only after CI passes (with branch deletion)
+gh pr merge <pr-number> --merge --delete-branch
+# Note: If --delete-branch fails due to worktree error, merge without it and delete branch manually
 
 # 5. Verify issue auto-closed (if "Closes #XX" was used)
 gh issue view <issue-number>  # Should show "CLOSED"
 
-# 6. Clean up
-git push origin --delete <branch-name>  # Delete remote branch
+# 6. Clean up environment
 container-use delete <env_id>           # Delete environment
 
 # 7. Update environments.json (MANDATORY)
@@ -591,9 +554,74 @@ container-use delete <env_id>           # Delete environment
 - `--squash`: Use for feature branches with many WIP commits.
 - `--rebase`: Use when linear history is required.
 
-**Worktree Conflict**: If adding `--delete-branch` option and it fails due to worktree, merge without it. Delete branch manually later if needed.
+**Worktree Conflict**: If `--delete-branch` fails due to worktree error, merge without it. Delete branch manually later if needed.
 
 **HARD BLOCK**: Never merge a PR without confirming CI success.
+
+### Rollback Procedure (Post-Merge Issues)
+
+PRマージ後に問題が発覚した場合のロールバック手順。
+
+#### 1. 問題の切り分け
+
+| 問題の種類 | 対応 |
+|-----------|------|
+| 軽微なバグ | 新しいPRで修正（ロールバック不要） |
+| 重大なバグ（本番影響） | git revert でロールバック |
+| セキュリティ問題 | 即座にロールバック + 緊急対応 |
+
+#### 2. git revert によるロールバック
+
+```bash
+# 1. 問題のコミットを特定
+git log --oneline -10
+
+# 2. revert コミットを作成（マージコミットの場合は -m 1）
+git revert <commit-hash>
+# or (for merge commits)
+git revert -m 1 <merge-commit-hash>
+
+# 3. revert 用の PR を作成
+gh pr create --title "revert: <original PR title>" --body "## Rollback
+Reverts PR #<original-pr-number>
+
+**Reason**: <問題の説明>
+"
+
+# 4. 緊急時は管理者権限でマージ
+gh pr merge <pr-number> --admin --merge
+```
+
+#### 3. ロールバック後の対応
+
+| ステップ | 内容 |
+|---------|------|
+| 1 | 問題の原因を調査（ログ、エラーメッセージ確認） |
+| 2 | 修正版を実装（新しいブランチで） |
+| 3 | 通常の PR フローで再マージ |
+| 4 | 振り返りメモを作成（再発防止） |
+
+#### 4. ロールバック時の environments.json
+
+ロールバック時は新しい環境を作成：
+
+```python
+def handle_rollback(original_pr_number: int):
+    """ロールバック時の環境管理"""
+    
+    # 1. 新しい環境を作成（ロールバック用）
+    env_id = container-use_environment_create(
+        title=f"Rollback PR #{original_pr_number}"
+    )
+    
+    # 2. environments.json に登録
+    register_environment(
+        issue_id=None,  # ロールバックは Issue に紐づかない
+        env_id=env_id,
+        branch=f"revert/pr-{original_pr_number}",
+        title=f"Rollback PR #{original_pr_number}"
+    )
+```
 
 ### PR Description Template (MANDATORY)
 
@@ -672,6 +700,31 @@ Examples:
 - `fix-issue-6-ci-failure`
 - `refactor-notification-module`
 
+### Variable Naming Convention
+
+| Context | Variable Name | Rationale |
+|---------|---------------|-----------|
+| **environments.json** (data store) | `issue_number` | JSON field name - explicit that it's a number |
+| **Code/Pseudocode** (variables) | `issue_id` | Common convention for ID variables |
+
+**Why the inconsistency is acceptable:**
+- `issue_number` in JSON is the **canonical field name** (matches GitHub API's `number` field)
+- `issue_id` in code is a **variable name convention** (shorter, easier to type)
+- Both refer to the same thing: GitHub Issue number (e.g., `42`)
+
+**Rule**: When reading/writing `environments.json`, map `issue_id` (code) ↔ `issue_number` (JSON):
+
+```python
+# Writing to environments.json
+entry = {
+    "issue_number": issue_id,  # Map variable to JSON field
+    ...
+}
+
+# Reading from environments.json
+issue_id = entry["issue_number"]  # Map JSON field to variable
+```
+
 ---
 
 ## Related Documents
@@ -689,6 +742,8 @@ Examples:
 
 | 日付 | バージョン | 変更内容 |
 |:---|:---|:---|
+| 2026-01-07 | 3.15.1 | 命名規則ガイドライン追加: issue_id vs issue_number の使い分けを明文化 |
+| 2026-01-07 | 3.15.0 | 厳格レビュー対応: Session State ManagementをSSOT化（Supermemoryは補助ログに）、ロールバック手順追加、--delete-branch統一 |
 | 2026-01-07 | 3.14.0 | Session Summary Auto-Save セクションを追加。Supermemory との連携による自動復旧機能を追加。Related Documents に Platform Exception Policy を追加 |
 | 2026-01-05 | 3.13.0 | environments.json必須化 |
 | 2026-01-05 | 3.12.0 | 追加仕様対応 |

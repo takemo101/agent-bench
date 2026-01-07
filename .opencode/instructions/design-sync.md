@@ -216,114 +216,64 @@ After Implementation:
 
 ---
 
-## Automatic Divergence Detection (NEW)
+## Design Divergence Check (Simplified)
 
 ### 概要
 
-実装完了後、設計書との乖離を**自動検出**するチェックを実行します。
-これにより、設計書の陳腐化を防ぎ、ドキュメントと実装の一貫性を保ちます。
+設計書と実装の乖離は**手動チェック + PR記載**で管理します。
+完全自動検出は設計書フォーマットの標準化が前提となるため、現時点では手動確認を推奨。
 
-### 検出タイミング
+### チェックタイミング
 
-| タイミング | 検出方法 | アクション |
-|-----------|---------|----------|
-| PR 作成前 | `check_design_divergence()` | 乖離があれば警告 |
-| 品質レビュー時 | レビューエージェントが設計書参照 | スコアに反映 |
-| PR マージ後 | `/reverse-engineer` による定期チェック | 設計書更新提案 |
+| タイミング | 担当 | アクション |
+|-----------|------|----------|
+| 実装完了時 | 実装者 | 設計書を再読し、乖離があれば PR に記載 |
+| レビュー時 | レビューエージェント | 設計書と実装の整合性をスコアに反映 |
+| 定期 | 開発者 | `/reverse-engineer` で設計書を再生成、差分確認 |
 
-### 検出項目
+### 実装者の責任
 
-| 項目 | 検出方法 | 重大度 |
-|------|---------|--------|
-| **API シグネチャ** | 関数名、引数、戻り値の比較 | 高 |
-| **データ構造** | struct/enum のフィールド比較 | 高 |
-| **モジュール構造** | ファイル配置、公開 API | 中 |
-| **エラー型** | エラーバリアント、エラーコード | 中 |
-| **命名規則** | 型名、関数名の一致 | 低 |
-
-### 検出ロジック
-
-```python
-def check_design_divergence(issue_id: int, design_doc_path: str, changed_files: list[str]) -> DivergenceReport:
-    """設計書と実装の乖離を検出"""
-    
-    divergences = []
-    
-    # 1. 設計書から API 仕様を抽出
-    design_spec = extract_api_spec_from_design(design_doc_path)
-    
-    # 2. 実装から実際の API を抽出
-    for file_path in changed_files:
-        impl_spec = extract_api_spec_from_code(file_path)
-        
-        # 3. 比較
-        # 関数シグネチャ
-        for func_name, design_sig in design_spec.functions.items():
-            impl_sig = impl_spec.functions.get(func_name)
-            if impl_sig and impl_sig != design_sig:
-                divergences.append(Divergence(
-                    type="function_signature",
-                    severity="high",
-                    design=design_sig,
-                    implementation=impl_sig,
-                    message=f"関数 `{func_name}` のシグネチャが設計と異なります"
-                ))
-        
-        # 構造体フィールド
-        for struct_name, design_fields in design_spec.structs.items():
-            impl_fields = impl_spec.structs.get(struct_name)
-            if impl_fields and set(impl_fields) != set(design_fields):
-                divergences.append(Divergence(
-                    type="struct_fields",
-                    severity="high",
-                    design=design_fields,
-                    implementation=impl_fields,
-                    message=f"構造体 `{struct_name}` のフィールドが設計と異なります"
-                ))
-    
-    return DivergenceReport(divergences=divergences)
-```
-
-### 乖離検出時のアクション
-
-| 重大度 | アクション |
-|--------|----------|
-| **高** | PR 作成をブロック、ユーザーに確認を要求 |
-| **中** | 警告を表示、PR 本文に乖離セクションを追加 |
-| **低** | PR 本文に記載のみ |
-
-#### 高重大度の乖離が検出された場合
+実装完了時に以下を確認：
 
 ```markdown
-## ⚠️ 設計書との乖離を検出
+## PR作成前チェックリスト
 
-以下の乖離が検出されました。PR 作成前に確認してください。
+- [ ] 設計書に記載された API シグネチャと一致しているか
+- [ ] 設計書に記載されたデータ構造と一致しているか
+- [ ] 乖離がある場合、PR本文の「Deviations from Design」セクションに記載したか
+```
 
-| 項目 | 設計書 | 実装 |
-|------|--------|------|
-| `TimerEngine::new()` | `fn new(config: Config) -> Self` | `fn new(config: Config, executor: HookExecutor) -> Self` |
+### 乖離を発見した場合
+
+PR本文に明記：
+
+```markdown
+### Deviations from Design
+
+| 設計書 | 実装 | 理由 |
+|--------|------|------|
+| `fn new(config: Config)` | `fn new(config: Config, executor: HookExecutor)` | フック実行機能を追加したため |
+```
 
 **選択肢**:
-1. **設計書を更新**: 実装に合わせて設計書を修正
-2. **実装を修正**: 設計書に合わせて実装を修正
-3. **乖離を承認**: 意図的な乖離として PR に記載して続行
-
-どれを選択しますか？
-```
+1. **設計書を更新** - アーキテクチャに影響する変更の場合（推奨）
+2. **PR本文に記載のみ** - 軽微な変更の場合
 
 ### 定期チェック（推奨）
 
-大規模な実装後は `/reverse-engineer` を実行して設計書を再生成し、
-既存の設計書と比較することを推奨します。
+大規模な実装後は `/reverse-engineer` で設計書を再生成：
 
 ```bash
 # 現在の実装から設計書を逆生成
 /reverse-engineer "src/daemon/"
 
-# 既存設計書との差分を確認
-diff docs/designs/detailed/pomodoro-timer/daemon-server.md \
-     docs/designs/reverse/pomodoro-timer-current.md
+# 既存設計書との差分を確認（目視）
 ```
+
+### 将来の自動化について
+
+設計書フォーマットを YAML/JSON で標準化した場合、自動検出が可能になります。
+現時点では手動チェックを推奨。
 
 ---
 

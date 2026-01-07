@@ -1519,6 +1519,110 @@ task(
 | **7-8点** | ⚠️ 指摘事項を修正 → 再レビュー |
 | **6点以下** | ❌ 重大な問題あり → 設計見直しを検討 |
 
+#### 7.4.0 客観的品質基準（必須条件）
+
+レビュースコアに加え、以下の**客観的基準**を満たす必要があります。
+これらはAIの主観に依存せず、ツールで検証可能です。
+
+| 基準 | 検証コマンド | 必須 |
+|------|-------------|------|
+| **Lintエラー 0件** | `cargo clippy -- -D warnings` / `npm run lint` | ✅ |
+| **型エラー 0件** | `cargo check` / `npm run type-check` | ✅ |
+| **フォーマット準拠** | `cargo fmt --check` / `npm run format:check` | ✅ |
+| **テスト全通過** | `cargo test` / `npm test` | ✅ |
+| **カバレッジ 80%以上** | `cargo tarpaulin` / `npm run coverage` | 推奨 |
+
+```python
+def check_objective_criteria(env_id: str, language: str) -> ObjectiveCriteriaResult:
+    """客観的品質基準のチェック"""
+    
+    checks = {
+        "rust": {
+            "lint": "cargo clippy -- -D warnings",
+            "type": "cargo check",
+            "format": "cargo fmt --check",
+            "test": "cargo test",
+        },
+        "typescript": {
+            "lint": "npm run lint",
+            "type": "npm run type-check",
+            "format": "npm run format:check",
+            "test": "npm test",
+        }
+    }
+    
+    results = {}
+    lang_checks = checks.get(language, {})
+    
+    for check_name, command in lang_checks.items():
+        result = container-use_environment_run_cmd(
+            environment_id=env_id,
+            command=command
+        )
+        results[check_name] = result.exit_code == 0
+    
+    # 全て通過必須
+    all_passed = all(results.values())
+    
+    return ObjectiveCriteriaResult(
+        passed=all_passed,
+        details=results,
+        message="全ての客観的基準を満たしています" if all_passed else f"失敗: {[k for k, v in results.items() if not v]}"
+    )
+```
+
+**客観的基準が未達の場合**: レビュースコアに関係なく PR 作成不可。先に修正すること。
+
+#### 7.4.1 同一指摘の検出（無限ループ防止）
+
+同じ指摘が繰り返される場合は即座にエスカレーションします。
+
+```python
+def detect_repeated_issues(current_issues: list[str], previous_issues: list[str]) -> bool:
+    """前回と同じ指摘が繰り返されているか検出"""
+    
+    # 指摘内容の正規化（小文字化、空白除去）
+    normalize = lambda s: s.lower().strip()
+    
+    current_set = set(normalize(i) for i in current_issues)
+    previous_set = set(normalize(i) for i in previous_issues)
+    
+    # 50%以上の指摘が前回と同じ場合、繰り返しと判定
+    overlap = current_set & previous_set
+    if previous_set and len(overlap) / len(previous_set) >= 0.5:
+        return True
+    
+    return False
+
+def review_with_repeat_detection(env_id: str, subtask_id: int) -> ReviewResult:
+    """同一指摘検出付きレビューループ"""
+    
+    MAX_RETRIES = 3
+    previous_issues = []
+    
+    for attempt in range(MAX_RETRIES):
+        review = run_quality_review(env_id, subtask_id)
+        
+        if review.score >= 9:
+            return ReviewResult(status="passed", score=review.score)
+        
+        # 同一指摘検出
+        if attempt > 0 and detect_repeated_issues(review.issues, previous_issues):
+            report_to_user(f"""
+⚠️ 同一指摘が繰り返されています（Issue #{subtask_id}）
+
+**前回の指摘**: {previous_issues}
+**今回の指摘**: {review.issues}
+
+修正方法を変更するか、ユーザーに相談してください。
+""")
+            return ReviewResult(status="escalated", score=review.score, reason="repeated_issues")
+        
+        previous_issues = review.issues
+        fix_issues(env_id, review.issues)
+    
+    return ReviewResult(status="escalated", score=review.score, reason="max_retries")
+
 #### 7.5 修正 & 再レビュー
 
 スコア未達の場合：
@@ -1797,22 +1901,29 @@ def analyze_failure(log: str) -> CIFailureAnalysis:
     return CIFailureAnalysis(type="unknown", errors=[log])
 ```
 
-#### 10.2.2 環境再開時の手順（Issue #XX で発生した問題への対応）
+#### 10.2.2 CI修正の実行環境
 
-CI修正時に container-use 環境を再開する必要がある場合：
+CI修正は**既存のcontainer-use環境を使用**します。環境は PR 作成後も削除せず保持されているため、再開可能です。
 
 ```python
 def fix_in_container(env_id: str, analysis: CIFailureAnalysis):
-    """container環境を再開して修正を実施"""
+    """既存のcontainer環境で修正を実施"""
     
-    # 1. 環境を再開
+    # 1. 環境を再開（既存環境を使用）
+    # Note: 環境はPR作成後も保持されている（削除はマージ後）
     container-use_environment_open(
         environment_id=env_id,
         environment_source=get_repo_path(),
         explanation="CI修正のため環境を再開"
     )
     
-    # 2. 自動修正可能な場合
+    # 2. リモートの最新状態を取得（CI失敗時点のコードを同期）
+    container-use_environment_run_cmd(
+        environment_id=env_id,
+        command="git pull origin HEAD"
+    )
+    
+    # 3. 修正を実施
     if analysis.auto_fixable:
         container-use_environment_run_cmd(
             environment_id=env_id,
@@ -1821,23 +1932,27 @@ def fix_in_container(env_id: str, analysis: CIFailureAnalysis):
     else:
         # 手動修正が必要
         for error in analysis.errors:
-            # エラー箇所を特定して修正
             fix_error(env_id, error)
     
-    # 3. ローカルで検証
+    # 4. ローカルで検証
     container-use_environment_run_cmd(
         environment_id=env_id,
         command="cargo clippy -- -D warnings && cargo test"
     )
     
-    # 4. push (force pushが必要な場合あり)
+    # 5. 修正をpush
     container-use_environment_run_cmd(
         environment_id=env_id,
         command="git add . && git commit -m 'fix: CI修正' && git push"
     )
 ```
 
-**重要**: 環境再開後は必ず `environments.json` の `last_used_at` を更新すること。
+**前提条件**:
+- 環境は PR マージ後まで削除されない（`cleanup_environment()` は `auto_merge_pr()` 後に呼ばれる）
+- CI 失敗時点でコードは既に push 済みなので、環境を再開したら `git pull` で同期する
+
+**environments.json の更新**:
+- 環境再開後、`last_used_at` を更新（`container-use_environment_open` 成功時）
 
 #### 10.3 リトライ上限超過時のエスカレーション
 
@@ -2056,7 +2171,7 @@ def post_pr_workflow_parallel(pr_results: list[dict]):
 | Sisyphus | 複数親Issue並列処理時 | 複数親Issue指定時の並列処理（233行） |
 | Sisyphus | handle_single_issue内 | Sisyphusへの指示（2095行） |
 
-#### 実装
+#### collect_worker_result() 実装
 
 ```python
 def collect_worker_result(task_id: str) -> dict:
@@ -2085,6 +2200,64 @@ def collect_worker_result(task_id: str) -> dict:
 | 1 Subtask | ~5,000トークン | ~200トークン | 96% |
 | 5 Subtasks | ~25,000トークン | ~1,000トークン | 96% |
 | 10 Subtasks | ~50,000トークン | ~2,000トークン | 96% |
+
+#### build_subtask_worker_prompt() 実装
+
+```python
+def build_subtask_worker_prompt(subtask_id: int, branch_name: str, parent_issue_id: int) -> str:
+    """Subtask実装用のcontainer-workerプロンプトを生成"""
+    
+    # Subtask情報を取得
+    subtask = fetch_github_issue(subtask_id)
+    design_doc = find_related_design_doc(subtask_id)
+    repo_path = get_repo_path()
+    
+    return f"""
+## タスク
+Subtask #{subtask_id} を実装し、PRを作成してください。
+
+## Subtask情報
+- **タイトル**: {subtask.title}
+- **本文**: {subtask.body[:500]}  # 500文字まで
+- **ラベル**: {', '.join(subtask.labels)}
+
+## ブランチ情報（Sisyphusが作成済み）
+- ブランチ名: `{branch_name}`
+- ⚠️ 新規ブランチを作成しないこと（既存を使用）
+- container-use環境作成時に `from_git_ref="{branch_name}"` を指定
+
+## 親Issue
+- 親Issue: #{parent_issue_id}（全Subtask完了後にSisyphusが自動クローズ）
+
+## リポジトリ
+- パス: `{repo_path}`
+
+## 設計書参照
+- パス: `{design_doc}` (存在する場合のみ参照)
+- ⚠️ 設計書全文を読み込まないこと。必要なセクションのみ参照。
+
+## 実装要件
+1. TDDで実装（Red → Green → Refactor）
+2. 品質レビューで9点以上を獲得するまでループ
+3. PR作成前にユーザー承認を取得
+
+## 期待する出力（JSON形式）
+```json
+{{
+  "subtask_id": {subtask_id},
+  "pr_number": <作成したPR番号>,
+  "env_id": "<環境ID>",
+  "score": <最終レビュースコア>,
+  "status": "passed" | "escalated"
+}}
+```
+
+## 禁止事項
+- 新規ブランチの作成
+- 設計書の全文読み込み
+- レビュー9点未満でのPR作成（escalate除く）
+"""
+```
 
 ### 15. decompose-issue との連携
 

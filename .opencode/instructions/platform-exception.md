@@ -56,9 +56,9 @@ Issue/Subtask 受け取り
 プラットフォーム固有ライブラリあり？
     ├─ NO → container-use 必須（通常フロー）
     └─ YES ↓
-        コンテナでビルド可能？
-        ├─ YES → container-use 使用（テストは CI で）
-        └─ NO → 例外適用（ホスト環境で作業）
+        【ビルドテスト】container-use 環境で cargo check / npm run build 実行
+        ├─ 成功 → container-use 使用（テストは CI で）
+        └─ 失敗 → 例外適用（ホスト環境で作業）
             ↓
         ユーザーに例外適用を報告
             ↓
@@ -66,6 +66,34 @@ Issue/Subtask 受け取り
             ↓
         CI で最終検証（必須）
 ```
+
+### ビルドテストの実施方法
+
+事前にコンテナでビルド可能かを検証します。**推測ではなく実際にビルドを試みる**ことで、判断の正確性を保証します。
+
+```python
+def verify_container_buildable(env_id: str, language: str) -> bool:
+    """コンテナ環境でビルド可能か検証"""
+    
+    build_commands = {
+        "rust": "cargo check",
+        "typescript": "npm run build",
+        "python": "pip install -e . --dry-run",
+    }
+    
+    cmd = build_commands.get(language, "echo 'Unknown language'")
+    
+    result = container-use_environment_run_cmd(
+        environment_id=env_id,
+        command=cmd
+    )
+    
+    return result.exit_code == 0
+```
+
+**判断結果の記録**:
+- ビルドテスト成功 → `container-use 使用可能` を Issue コメントに記録
+- ビルドテスト失敗 → `platform-exception 適用` を Issue コメントに記録（エラーログ付き）
 
 ---
 
