@@ -413,7 +413,7 @@ def register_environment(issue_id: int, env_id: str, branch: str):
     """環境作成時に登録"""
     data = load_environments()
     data["environments"].append({
-        "issue_id": issue_id,
+        "issue_number": issue_id,  # JSON field name: issue_number
         "env_id": env_id,
         "branch": branch,
         "status": "active",
@@ -454,7 +454,7 @@ def find_environment_by_issue(issue_id: int) -> dict | None:
     """Issue IDから環境を検索（PR修正時の再利用用）"""
     data = load_environments()
     for env in data["environments"]:
-        if env["issue_id"] == issue_id and env["status"] in ["active", "pr_created"]:
+        if env["issue_number"] == issue_id and env["status"] in ["active", "pr_created"]:
             return env
     return None
 ```
@@ -496,148 +496,9 @@ Issue番号を指定します。複数指定可能。
 
 ### 🔄 親Issue → Subtask自動検出（重要）
 
-> **単一Issue指定時は、必ずSubtaskの有無を確認すること。**
-> **⚠️ Subtaskがある場合、各Subtaskごとに独立したfeatureブランチ・container-use環境・PRを作成する。**
+> **詳細**: [Subtask検出 & 依存関係解決](../skill/subtask-detection.md) を参照
 
-```python
-def resolve_issues(issue_ids: list[int]) -> list[int]:
-    """
-    Issue番号リストを解決し、必要に応じてSubtaskを展開する
-    
-    - 単一Issue: Subtaskがあれば展開、なければそのまま
-    - 複数Issue: そのまま使用（展開しない）
-    
-    ⚠️ 重要: Subtask展開時、各Subtaskは独立したブランチ・環境・PRを持つ
-    """
-    if len(issue_ids) == 1:
-        parent_id = issue_ids[0]
-        subtasks = detect_subtasks(parent_id)
-        
-        if subtasks:
-            report_to_user(f"""
-📋 親Issue #{parent_id} から {len(subtasks)}件のSubtaskを検出しました。
-
-| Subtask | タイトル |
-|---------|---------|
-{format_subtask_table(subtasks)}
-
-**各Subtaskごとに独立したfeatureブランチ・環境・PRを作成して順次実装します。**
-""")
-            return subtasks
-        else:
-            # Subtaskなし → 単体実装
-            return issue_ids
-    else:
-        # 複数指定 → そのまま使用
-        return issue_ids
-```
-
-#### Subtask順次実装の構造
-
-```
-親Issue #8 (ポモドーロタイマー)
-│
-├── Subtask #9 → feature/issue-9-data-types → 環境A → PR #25 → マージ → 環境A削除
-│       ↓ (完了後)
-├── Subtask #10 → feature/issue-10-timer-engine → 環境B → PR #26 → マージ → 環境B削除
-│       ↓ (完了後)
-└── Subtask #11 → feature/issue-11-ipc-server → 環境C → PR #27 → マージ → 環境C削除
-        ↓
-全Subtask完了 → 親Issue #8 自動クローズ
-```
-
-#### Subtask検出ロジック
-
-```python
-def detect_subtasks(parent_issue_id: int) -> list[int]:
-    """
-    親IssueからSubtaskを検出する
-    
-    検出パターン（優先順）:
-    1. Issue bodyの "- [ ] #N" チェックリスト形式
-    2. Issue bodyの "Subtask of #N" 逆参照（子→親）
-    3. Issue commentsの Subtask作成記録
-    
-    Note: GitHub Sub-issues API (trackedInIssues) は gh CLI では取得不可のため使用しない
-    """
-    
-    # Issue情報を取得
-    result = bash(f"gh issue view {parent_issue_id} --json body,comments,number,title")
-    if not result or result.exit_code != 0:
-        report_to_user(f"⚠️ Issue #{parent_issue_id} の取得に失敗しました")
-        return []
-    
-    issue_data = json.loads(result.stdout)
-    subtask_ids = []
-    
-    # 1. Issue body からチェックリスト形式を検出
-    # パターン: "- [ ] #123" or "- [x] #123" or "- #123"
-    body = issue_data.get("body", "") or ""
-    checkbox_patterns = [
-        r"- \[[ x]\] #(\d+)",      # チェックボックス形式
-        r"- #(\d+)",                # シンプルなリスト形式
-        r"\* #(\d+)",               # アスタリスク形式
-    ]
-    for pattern in checkbox_patterns:
-        matches = re.findall(pattern, body)
-        subtask_ids.extend([int(m) for m in matches])
-    
-    if subtask_ids:
-        return list(set(subtask_ids))
-    
-    # 2. Comments から Subtask作成記録を検出
-    # /decompose-issue が作成するコメント形式を検出
-    comments = issue_data.get("comments", []) or []
-    for comment in comments:
-        comment_body = comment.get("body", "") or ""
-        
-        # 検出パターン: "Created subtask #N", "Subtask #N", "Sub-issue #N"
-        if any(kw in comment_body for kw in ["Subtask", "subtask", "Sub-issue", "Created #"]):
-            matches = re.findall(r"#(\d+)", comment_body)
-            # 親Issue自身を除外
-            subtask_ids.extend([
-                int(m) for m in matches 
-                if int(m) != parent_issue_id
-            ])
-    
-    # 3. 逆参照検索（子Issueが "Subtask of #N" を持つ場合）
-    if not subtask_ids:
-        # リポジトリ内のOpen Issueを検索
-        search_result = bash(f'''
-            gh issue list --state all --limit 100 --json number,body \
-            | jq '[.[] | select(.body != null) | select(.body | test("Subtask of #{parent_issue_id}|Parent: #{parent_issue_id}")) | .number]'
-        ''')
-        if search_result.exit_code == 0 and search_result.stdout.strip():
-            try:
-                found_ids = json.loads(search_result.stdout)
-                subtask_ids.extend(found_ids)
-            except json.JSONDecodeError:
-                pass
-    
-    return list(set(subtask_ids))  # 重複排除
-```
-
-#### 検出失敗時のフォールバック
-
-```python
-def detect_subtasks_with_fallback(parent_issue_id: int) -> tuple[list[int], str]:
-    """
-    Subtask検出（検出方法も返す）
-    
-    Returns:
-        (subtask_ids, detection_method)
-    """
-    subtasks = detect_subtasks(parent_issue_id)
-    
-    if subtasks:
-        return (subtasks, "auto_detected")
-    
-    # 検出できなかった場合、ユーザーに確認
-    # Issue自体がSubtaskを持つ設計かどうか不明なため
-    return ([], "none_found")
-```
-
-#### 検出結果に応じた処理フロー
+**概要**: 単一Issue指定時は、必ずSubtaskの有無を確認。Subtaskがある場合、各Subtaskごとに独立したブランチ・環境・PRを作成して**順次実装**する。
 
 | 検出結果 | 処理 |
 |---------|------|
@@ -645,117 +506,11 @@ def detect_subtasks_with_fallback(parent_issue_id: int) -> tuple[list[int], str]
 | Subtaskなし + 200行以下 | 単体実装 |
 | Subtaskなし + 200行超 | `/decompose-issue` を案内 |
 
-#### Subtask依存関係チェック（順次実行時の順序決定）
-
-> **⚠️ 重要**: Subtask間に依存関係がある場合、依存元を先に実装する必要がある。
-> 順次実行なので依存関係順にソートすれば自然に対応可能。
-
-```python
-def check_subtask_dependencies(subtask_ids: list[int]) -> list[int]:
-    """
-    Subtask間の依存関係をチェックし、実行順序を決定
-    
-    Returns:
-        依存関係順にソートされたSubtask IDリスト
-        例: [9, 10, 11]  # 9を先に実装 → 10 → 11の順
-    """
-    dependencies = {}  # {issue_id: [depends_on_ids]}
-    
-    for issue_id in subtask_ids:
-        result = bash(f"gh issue view {issue_id} --json body,title")
-        issue_data = json.loads(result.stdout)
-        body = issue_data.get("body", "") or ""
-        
-        # 依存関係パターンを検出
-        # "Depends on #N", "Blocked by #N", "After #N", "Requires #N"
-        dep_patterns = [
-            r"[Dd]epends on #(\d+)",
-            r"[Bb]locked by #(\d+)",
-            r"[Aa]fter #(\d+)",
-            r"[Rr]equires #(\d+)",
-        ]
-        
-        deps = []
-        for pattern in dep_patterns:
-            matches = re.findall(pattern, body)
-            deps.extend([int(m) for m in matches if int(m) in subtask_ids])
-        
-        dependencies[issue_id] = list(set(deps))
-    
-    # トポロジカルソートで実行順序を決定
-    return topological_sort(subtask_ids, dependencies)
-
-def topological_sort(ids: list[int], deps: dict[int, list[int]]) -> list[int]:
-    """
-    依存関係を考慮してソート（順次実行用）
-    
-    例:
-    - #9: 依存なし
-    - #10: 依存なし
-    - #11: #9に依存
-    
-    結果: [9, 10, 11] または [10, 9, 11]（#11は最後）
-    """
-    # 入次数を計算
-    in_degree = {id: 0 for id in ids}
-    for id, dep_list in deps.items():
-        for dep in dep_list:
-            if dep in in_degree:
-                in_degree[id] += 1
-    
-    sorted_ids = []
-    remaining = set(ids)
-    
-    while remaining:
-        # 入次数0のノードを取得
-        ready = [id for id in remaining if in_degree.get(id, 0) == 0]
-        
-        if not ready:
-            # 循環依存を検出
-            raise ValueError(f"循環依存を検出: {remaining}")
-        
-        # 順次実行なので、1つずつリストに追加
-        for id in ready:
-            sorted_ids.append(id)
-            remaining.remove(id)
-            for other_id in remaining:
-                if id in deps.get(other_id, []):
-                    in_degree[other_id] -= 1
-    
-    return sorted_ids
+**Subtask順次実装の構造**:
 ```
-
-#### 依存関係に応じた実行フロー
-
-```python
-def implement_subtasks_with_deps(parent_id: int, subtask_ids: list[int]):
-    """依存関係を考慮したSubtask順次実装"""
-    
-    # 依存関係をチェックしてソート
-    sorted_subtasks = check_subtask_dependencies(subtask_ids)
-    
-    report_to_user(f"📋 {len(subtask_ids)}件のSubtaskを依存関係順に実装します: {sorted_subtasks}")
-    
-    results = []
-    for i, subtask_id in enumerate(sorted_subtasks, 1):
-        report_to_user(f"🔄 Subtask {i}/{len(sorted_subtasks)}: #{subtask_id} を実装中...")
-        
-        result = implement_single_subtask(subtask_id)
-        results.append(result)
-        
-        # 失敗したら中断
-        if result.get('status') == 'failed':
-            report_to_user(f"⚠️ Subtask #{subtask_id} の実装に失敗。後続をスキップします")
-            break
-    
-    return results
+親Issue #8 → Subtask #9 → #10 → #11 → 親Issue自動クローズ
+            (各Subtaskが独立したブランチ・環境・PRを持つ)
 ```
-
-| 依存パターン | 検出キーワード |
-|-------------|---------------|
-| 明示的依存 | `Depends on #N`, `Blocked by #N` |
-| 順序指定 | `After #N`, `Requires #N` |
-| 暗黙的依存 | （検出不可 → 失敗時に報告） |
 
 ## ワークフロー概要
 
@@ -1397,7 +1152,6 @@ container-use_environment_run_cmd(command="cargo run -- status")
 | 7-8点 | 修正 → 再レビュー |
 | 6点以下 | 設計見直し |
 
-<<<<<<< HEAD
 #### 7.4.0 客観的品質基準（必須条件）
 
 レビュースコアに加え、以下の**客観的基準**を満たす必要があります。
@@ -1671,235 +1425,22 @@ Closes #{issue_id}
 
 ### 10. CI監視 & 自動マージ ⚠️ 必須
 
-> **⚠️ 重要**: PR作成後、CIの完了を待ち、結果に応じて自動マージまたは修正を行う。
+> **詳細**: [CI監視 & マージワークフロー](../skill/ci-workflow.md) を参照
 
-#### 実行者の責任分担
+**概要**: PR作成後、CIの完了を待ち、結果に応じて自動マージまたは修正を行う。
 
-| フェーズ | 実行者 | 理由 |
+| フェーズ | 実行者 | 処理 |
 |---------|--------|------|
-| 0-9 (実装→PR作成) | `container-worker` (並列時) / `Sisyphus` (単一時) | container-use環境内での作業 |
-| **10 (CI監視→マージ)** | **`Sisyphus` (親エージェント)** | GitHub API操作、環境外での監視 |
-| **11 (環境クリーンアップ)** | **`Sisyphus` (親エージェント)** | 環境管理はホスト側で実行 |
+| 0-9 | `container-worker` / `Sisyphus` | 実装→PR作成（環境内） |
+| 10-11 | `Sisyphus` | CI監視→マージ→環境削除（環境外） |
 
-> **Note**: セクション10-11はcontainer-use環境**外**で実行します。
-> CI監視やPRマージはGitHub APIの呼び出しであり、環境内のファイル操作ではないため`bash`ツールの使用が許容されます。
+**フロー**: `PR作成 → CI待機(10分) → 成功:マージ&削除 / 失敗:修正(3回) / タイムアウト:報告`
 
-PR作成後、以下のフローを実行します：
-
-<!-- [DIAGRAM-FOR-HUMANS] CI監視フロー図（AI処理時はスキップ）
-PR作成 → CI待機(10分) → 成功:マージ→環境削除 / 失敗:ログ分析→修正→push(3回まで) / 3回超過:エスカレーション
--->
-
-#### 10.1 CI完了待機
-
-```python
-def wait_for_ci(pr_number: int, timeout: int = 600) -> CIResult:
-    """30秒間隔でgh pr checksをポーリング（最大10分）"""
-    # 全SUCCESS → SUCCESS、1つでもFAILURE → FAILURE、タイムアウト → TIMEOUT
-    for _ in range(timeout // 30):
-        checks = bash(f"gh pr checks {pr_number} --json state,name")
-        if all_success(checks): return SUCCESS
-        if any_failure(checks): return FAILURE
-        wait(30)
-    return TIMEOUT
-
-def handle_ci_timeout(pr_number: int, env_id: str):
-    """タイムアウト時: pending_checksあり→「CI実行中」、なし→「状態取得エラー」を報告"""
-    report_to_user(f"⏱️ CI待機タイムアウト PR #{pr_number}。gh pr checks --watch で手動確認")
-```
-
-#### 10.2 CI失敗時の修正フロー
-
-```python
-MAX_CI_RETRIES = 3  # CIリトライ上限
-
-def handle_ci_failure(pr_number: int, env_id: str) -> bool:
-    """CI失敗 → ログ分析 → container環境で修正 → push → 再待機（最大3回）"""
-    for attempt in range(MAX_CI_RETRIES):
-        log = bash("gh run view --log-failed")
-        fix_in_container(env_id, analyze_failure(log))
-        bash("git add . && git commit -m 'fix: CI修正' && git push")
-        if wait_for_ci(pr_number) == SUCCESS:
-            return True
-    return False  # リトライ超過 → escalate_ci_failure()
-```
-
-#### 10.2.1 CI失敗の分類と対応（NEW）
-
-| 失敗カテゴリ | 検出パターン | 対応方法 | 環境 |
-|------------|-------------|---------|------|
-| **Lint/Clippy** | `warning:`, `error:`, `clippy::` | 自動修正 (`--fix`) | container-use |
-| **Test失敗** | `FAILED`, `test result: FAILED` | テストコード修正 | container-use |
-| **ビルドエラー** | `error[E`, `cannot find` | コード修正 | container-use |
-| **フォーマット** | `Diff in`, `would have been reformatted` | `cargo fmt` / `npm run format` | container-use |
-| **環境依存** | `platform exception`, `target not supported` | **環境再開** | container-use再開 |
-
-```python
-def analyze_failure(log: str) -> CIFailureAnalysis:
-    """CIログを分析して失敗種別を特定"""
-    
-    # Clippy/Lint エラー
-    if "clippy::" in log or "warning:" in log:
-        # 自動修正を試行
-        clippy_errors = extract_clippy_errors(log)
-        return CIFailureAnalysis(
-            type="lint",
-            errors=clippy_errors,
-            auto_fixable=True,
-            fix_command="cargo clippy --fix --allow-dirty --allow-staged"
-        )
-    
-    # テスト失敗
-    if "FAILED" in log or "test result: FAILED" in log:
-        failed_tests = extract_failed_tests(log)
-        return CIFailureAnalysis(
-            type="test",
-            errors=failed_tests,
-            auto_fixable=False,
-            suggestion="テストケースまたは実装を修正"
-        )
-    
-    # ビルドエラー
-    if "error[E" in log:
-        build_errors = extract_build_errors(log)
-        return CIFailureAnalysis(
-            type="build",
-            errors=build_errors,
-            auto_fixable=False,
-            suggestion="コンパイルエラーを修正"
-        )
-    
-    # フォーマットエラー
-    if "would have been reformatted" in log or "Diff in" in log:
-        return CIFailureAnalysis(
-            type="format",
-            auto_fixable=True,
-            fix_command="cargo fmt"  # or "npm run format"
-        )
-    
-    return CIFailureAnalysis(type="unknown", errors=[log])
-```
-
-#### 10.2.2 CI修正の実行環境
-
-CI修正は**既存のcontainer-use環境を使用**します。環境は PR 作成後も削除せず保持されているため、再開可能です。
-
-```python
-def fix_in_container(env_id: str, analysis: CIFailureAnalysis):
-    """既存のcontainer環境で修正を実施"""
-    
-    # 1. 環境を再開（既存環境を使用）
-    # Note: 環境はPR作成後も保持されている（削除はマージ後）
-    container-use_environment_open(
-        environment_id=env_id,
-        environment_source=get_repo_path(),
-        explanation="CI修正のため環境を再開"
-    )
-    
-    # 2. リモートの最新状態を取得（CI失敗時点のコードを同期）
-    container-use_environment_run_cmd(
-        environment_id=env_id,
-        command="git pull origin HEAD"
-    )
-    
-    # 3. 修正を実施
-    if analysis.auto_fixable:
-        container-use_environment_run_cmd(
-            environment_id=env_id,
-            command=analysis.fix_command
-        )
-    else:
-        # 手動修正が必要
-        for error in analysis.errors:
-            fix_error(env_id, error)
-    
-    # 4. ローカルで検証
-    container-use_environment_run_cmd(
-        environment_id=env_id,
-        command="cargo clippy -- -D warnings && cargo test"
-    )
-    
-    # 5. 修正をpush
-    container-use_environment_run_cmd(
-        environment_id=env_id,
-        command="git add . && git commit -m 'fix: CI修正' && git push"
-    )
-```
-
-**前提条件**:
-- 環境は PR マージ後まで削除されない（`cleanup_environment()` は `auto_merge_pr()` 後に呼ばれる）
-- CI 失敗時点でコードは既に push 済みなので、環境を再開したら `git pull` で同期する
-
-**environments.json の更新**:
-- 環境再開後、`last_used_at` を更新（`container-use_environment_open` 成功時）
-
-#### 10.3 リトライ上限超過時のエスカレーション
-
-```python
-def escalate_ci_failure(pr_number: int, env_id: str):
-    """PRをDraft化、失敗ログをコメント、ユーザーに報告"""
-    bash(f"gh pr ready {pr_number} --undo")
-    bash(f"gh pr comment {pr_number} --body '⚠️ CI修正3回失敗。env_id: {env_id}'")
-    report_to_user(f"⚠️ PR #{pr_number} 手動確認が必要")
-```
-
-#### 10.4 自動マージ
-
-```python
-def auto_merge_pr(pr_number: int, env_id: str) -> bool:
-    """gh pr merge --merge --delete-branch。失敗時はhandle_merge_failure()"""
-    result = bash(f"gh pr merge {pr_number} --merge --delete-branch")
-    return result.exit_code == 0 or handle_merge_failure(pr_number, error=result.stderr)
-    # handle_merge_failure: conflict → checkout案内, protected branch → レビュー確認案内
-```
-
-#### 10.5 CI監視のメインフロー
-
-```python
-def post_pr_workflow(pr_number: int, env_id: str):
-    """PR作成後: CI待機 → 成功:マージ&削除 / 失敗:修正(3回) / タイムアウト:報告"""
-    ci_result = wait_for_ci(pr_number)
-    
-    if ci_result == SUCCESS:
-        auto_merge_pr(pr_number, env_id) and cleanup_environment(env_id)
-    elif ci_result == FAILURE:
-        handle_ci_failure(pr_number, env_id) and auto_merge_pr(...) and cleanup_environment(...)
-        # 修正失敗時 → escalate_ci_failure() 環境保持
-    elif ci_result == TIMEOUT:
-        handle_ci_timeout(pr_number, env_id)  # 環境保持
-```
-
-### 11. 環境クリーンアップ ⚠️ 必須
-
-> **⚠️ 重要**: PRマージ後、使用したcontainer-use環境を削除する。
-
-```python
-def cleanup_environment(env_id: str, pr_number: int) -> bool:
-    """container-use delete {env_id} を実行（最大2回リトライ）"""
-    for _ in range(3):  # MAX_CLEANUP_RETRIES + 1
-        if bash(f"container-use delete {env_id}").exit_code == 0:
-            report_to_user(f"✅ PR #{pr_number} マージ済み、環境 {env_id} 削除済み")
-            return True
-        wait(5)
-    report_to_user(f"⚠️ 環境削除失敗。手動: container-use delete {env_id}")
-    return False
-```
-
-#### クリーンアップのタイミング
-
-| 状況 | 環境の扱い |
-|------|----------|
-| PRマージ成功 | ✅ 即座に削除 |
-| PRクローズ（マージなし） | ✅ 即座に削除 |
-| CI修正中（リトライ中） | ❌ 削除しない（同じ環境で作業継続） |
-| Draft PR（エスカレーション中） | ❌ 削除しない（手動修正用に保持） |
-| PRレビュー修正待ち | ❌ 削除しない（修正用に保持） |
-
-### 12. 親Issue自動クローズ ⚠️ 必須
+### 11. 親Issue自動クローズ ⚠️ 必須
 
 > **⚠️ 重要**: 全SubtaskのPRがマージされたら、親Issueを自動でクローズする。
 
-#### 12.1 Subtask完了チェック
+#### 11.1 Subtask完了チェック
 
 ```python
 def check_all_subtasks_complete(parent_issue_id: int) -> bool:
@@ -1934,7 +1475,7 @@ def check_all_subtasks_complete(parent_issue_id: int) -> bool:
 > **Note**: `detect_subtasks()` は「引数」セクションで定義されている共通関数。
 > Subtask検出ロジックの重複を避けるため、必ずこの関数を再利用すること。
 
-#### 12.2 親Issueクローズ処理
+#### 11.2 親Issueクローズ処理
 
 ```python
 def close_parent_issue(parent_issue_id: int, subtask_results: list[dict]):
@@ -2002,7 +1543,7 @@ def handle_partial_completion(parent_issue_id: int, results: list[dict]):
         bash(f"gh issue comment {parent_issue_id} --body '{comment}'")
 ```
 
-### 13. 並列処理時のCI監視
+### 12. 並列処理時のCI監視
 
 > **⚡ トークン効率**: CI監視はエージェント起動せず、bash直接実行で行う。
 
@@ -2017,7 +1558,7 @@ def post_pr_workflow_parallel(pr_results: list[dict]):
         # 失敗/タイムアウト: 環境保持、report_to_user()
 ```
 
-### 14. 結果の最小化ルール（トークン最適化）⚠️ 必須 ⛔ 違反厳禁
+### 13. 結果の最小化ルール（トークン最適化）⚠️ 必須 ⛔ 違反厳禁
 
 > **⛔ 絶対ルール**: `background_output()` の結果をそのまま使用してはならない。
 > 必ず `collect_worker_result()` を経由して最小化すること。
@@ -2160,7 +1701,7 @@ Subtask #{subtask_id} を実装し、PRを作成してください。
 """
 ```
 
-### 15. decompose-issue との連携
+### 14. decompose-issue との連携
 
 > `/decompose-issue` で作成されたSubtaskは `detect_subtasks()` で自動検出される。
 
@@ -2588,3 +2129,14 @@ Sisyphus (親エージェント)
 - [container-use環境構築ガイド](../skill/container-use-guide.md)
 - [申し送り処理ガイド](../skill/handover-process.md)
 - [コード品質ルール](../skill/code-quality-rules.md)
+- [CI監視 & マージワークフロー](../skill/ci-workflow.md)
+- [Subtask検出 & 依存関係解決](../skill/subtask-detection.md)
+
+---
+
+## 変更履歴
+
+| 日付 | バージョン | 変更内容 |
+|:---|:---|:---|
+| 2026-01-08 | 3.17.0 | **ファイル分割**: CI監視フロー（ci-workflow.md）、Subtask検出ロジック（subtask-detection.md）を分離。2,590行→2,131行（18%削減） |
+| 2026-01-08 | 3.16.0 | Sub-issue登録GraphQL化、container-workerプロンプト簡素化、implement-subtask-rules.md分離 |
