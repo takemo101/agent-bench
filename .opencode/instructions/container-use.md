@@ -443,6 +443,90 @@ When creating continuation prompts for future sessions:
 
 **Anti-pattern**: Blindly executing continuation prompts without state verification.
 
+### Session Summary Auto-Save (NEW)
+
+セッション終了時に Supermemory へ自動保存し、次回セッションでの復旧を確実にします。
+
+#### 保存タイミング
+
+| イベント | 保存内容 | 保存先 |
+|---------|---------|--------|
+| **Issue 実装開始** | Issue番号、ブランチ名、env_id | environments.json + Supermemory |
+| **PR 作成完了** | PR番号、レビュースコア、CI状態 | environments.json + Supermemory |
+| **セッション中断** | 現在の作業状態、TODO残項目 | Supermemory (Session Summary) |
+| **エラー発生** | エラー内容、復旧手順 | Supermemory |
+
+#### 自動保存フォーマット
+
+```markdown
+[Session Summary]
+
+## Summary: {作業内容の要約}
+
+### What We Did
+1. {完了した作業1}
+2. {完了した作業2}
+
+### Current State
+- **Issue**: #{issue_id}
+- **Branch**: {branch_name}
+- **Environment ID**: {env_id}
+- **PR**: #{pr_number} (if created)
+- **CI Status**: {passing/failing/pending}
+
+### Files Modified
+- {file1}
+- {file2}
+
+### Remaining Tasks
+- [ ] {残タスク1}
+- [ ] {残タスク2}
+
+### Recovery Commands
+```bash
+# 1. environments.json から env_id を取得
+cat .opencode/environments.json | jq '.environments[] | select(.issue_number == {issue_id})'
+
+# 2. 環境を再開
+container-use_environment_open(environment_id="{env_id}")
+
+# 3. 状態を確認
+gh issue view {issue_id}
+gh pr view {pr_number}  # if PR exists
+```
+```
+
+#### 復旧時の自動検索
+
+次回セッション開始時、関連するメモリを自動検索：
+
+```python
+def auto_recover_session(issue_id: int) -> SessionState | None:
+    """前回セッションの状態を自動復旧"""
+    
+    # 1. environments.json をチェック（最優先）
+    env_entry = find_environment_by_issue(issue_id)
+    if env_entry:
+        return SessionState(
+            env_id=env_entry["env_id"],
+            branch=env_entry["branch"],
+            pr_number=env_entry.get("pr_number"),
+            status=env_entry["status"]
+        )
+    
+    # 2. Supermemory から検索（フォールバック）
+    memory_result = supermemory(
+        mode="search",
+        query=f"Issue #{issue_id} Session Summary",
+        scope="project"
+    )
+    
+    if memory_result.get("results"):
+        return parse_session_summary(memory_result["results"][0])
+    
+    return None  # 前回セッションなし
+```
+
 ---
 
 ## Forbidden Actions (HARD BLOCKS)
@@ -596,4 +680,15 @@ Examples:
 |----------|---------|-------------------|
 | [Design Sync Policy](./design-sync.md) | Keep design docs and implementation in sync | Before/during/after implementation |
 | [Testing Strategy](./testing-strategy.md) | Handle environment-dependent code testing | When writing tests for OS/hardware-dependent code |
+| [Platform Exception Policy](./platform-exception.md) | Platform-specific code exception rules | When implementing macOS/Windows-specific code |
 | [container-use Guide](../skill/container-use-guide.md) | Step-by-step container environment setup | First time using container-use |
+
+---
+
+## 変更履歴
+
+| 日付 | バージョン | 変更内容 |
+|:---|:---|:---|
+| 2026-01-07 | 3.14.0 | Session Summary Auto-Save セクションを追加。Supermemory との連携による自動復旧機能を追加。Related Documents に Platform Exception Policy を追加 |
+| 2026-01-05 | 3.13.0 | environments.json必須化 |
+| 2026-01-05 | 3.12.0 | 追加仕様対応 |

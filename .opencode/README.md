@@ -281,6 +281,7 @@ docs/
 | [container-useエージェントルール](./instructions/container-use.md) | 障害対応・セッション復旧・フォールバック手順 | **障害発生時・セッション再開時** |
 | [設計書同期ポリシー](./instructions/design-sync.md) | 設計書と実装の同期ルール、差分ドキュメント化 | **実装時（設計書参照時）** |
 | [テスト戦略](./instructions/testing-strategy.md) | 環境依存コードのテスト方針、Mock実装パターン | **テスト実装時** |
+| [プラットフォーム例外ポリシー](./instructions/platform-exception.md) | macOS/Windows固有コードのcontainer-use例外判断 | **プラットフォーム固有コード実装時** |
 | [レビューガイド](./skill/review-guidelines.md) | DB/セキュリティ/アーキテクチャの詳細レビュー観点 | レビュー時 |
 | [コード品質ルール](./skill/code-quality-rules.md) | 500行ルール、固定アーキテクチャ、命名規則 | 実装時 |
 | [インフラワークフロー](./skill/infra-workflow.md) | Terraform/Docker Composeの設計・実装フロー | インフラ構築時 |
@@ -387,6 +388,7 @@ container-use_environment_run_cmd(command="npm test")
 
 | 日付 | バージョン | 変更内容 |
 |:---|:---|:---|
+| 2026-01-07 | 3.14.0 | **ワークフロー改善5点**: (1) プラットフォーム例外ポリシー新規追加 (2) 設計書乖離自動検出機能追加 (3) セッション自動保存機能追加 (4) CI失敗時の分類・修正フロー追加 (5) スキルドキュメント参照にプラットフォーム例外ポリシーを追加 |
 | 2026-01-05 | 3.13.0 | **environments.json必須化**: container-use操作時のenvironments.json読み書きを必須化。環境作成・PR作成・マージ・削除の各タイミングで更新を強制。セッション復旧時のenvironments.json参照を優先化 |
 | 2026-01-05 | 3.12.0 | **追加仕様対応**: 全設計ワークフロー（req/basic/detailed）にPhase 0.5（既存ドキュメント整合性確認）を追加。既存プロジェクトへの仕様追加時に、要件定義書・基本設計書・詳細設計書・Issue・コードベースとの整合性を自動チェックし、影響範囲を明確化 |
 | 2026-01-04 | 3.11.0 | **ワークフローレビュー反映**: PRマージフロー改善（クリーンアップ統合）、Related Documentsセクション追加、設計書更新手順追加、mockallクレート追加、現行テスト構造との差異明記 |

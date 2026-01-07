@@ -216,9 +216,130 @@ After Implementation:
 
 ---
 
+## Automatic Divergence Detection (NEW)
+
+### 概要
+
+実装完了後、設計書との乖離を**自動検出**するチェックを実行します。
+これにより、設計書の陳腐化を防ぎ、ドキュメントと実装の一貫性を保ちます。
+
+### 検出タイミング
+
+| タイミング | 検出方法 | アクション |
+|-----------|---------|----------|
+| PR 作成前 | `check_design_divergence()` | 乖離があれば警告 |
+| 品質レビュー時 | レビューエージェントが設計書参照 | スコアに反映 |
+| PR マージ後 | `/reverse-engineer` による定期チェック | 設計書更新提案 |
+
+### 検出項目
+
+| 項目 | 検出方法 | 重大度 |
+|------|---------|--------|
+| **API シグネチャ** | 関数名、引数、戻り値の比較 | 高 |
+| **データ構造** | struct/enum のフィールド比較 | 高 |
+| **モジュール構造** | ファイル配置、公開 API | 中 |
+| **エラー型** | エラーバリアント、エラーコード | 中 |
+| **命名規則** | 型名、関数名の一致 | 低 |
+
+### 検出ロジック
+
+```python
+def check_design_divergence(issue_id: int, design_doc_path: str, changed_files: list[str]) -> DivergenceReport:
+    """設計書と実装の乖離を検出"""
+    
+    divergences = []
+    
+    # 1. 設計書から API 仕様を抽出
+    design_spec = extract_api_spec_from_design(design_doc_path)
+    
+    # 2. 実装から実際の API を抽出
+    for file_path in changed_files:
+        impl_spec = extract_api_spec_from_code(file_path)
+        
+        # 3. 比較
+        # 関数シグネチャ
+        for func_name, design_sig in design_spec.functions.items():
+            impl_sig = impl_spec.functions.get(func_name)
+            if impl_sig and impl_sig != design_sig:
+                divergences.append(Divergence(
+                    type="function_signature",
+                    severity="high",
+                    design=design_sig,
+                    implementation=impl_sig,
+                    message=f"関数 `{func_name}` のシグネチャが設計と異なります"
+                ))
+        
+        # 構造体フィールド
+        for struct_name, design_fields in design_spec.structs.items():
+            impl_fields = impl_spec.structs.get(struct_name)
+            if impl_fields and set(impl_fields) != set(design_fields):
+                divergences.append(Divergence(
+                    type="struct_fields",
+                    severity="high",
+                    design=design_fields,
+                    implementation=impl_fields,
+                    message=f"構造体 `{struct_name}` のフィールドが設計と異なります"
+                ))
+    
+    return DivergenceReport(divergences=divergences)
+```
+
+### 乖離検出時のアクション
+
+| 重大度 | アクション |
+|--------|----------|
+| **高** | PR 作成をブロック、ユーザーに確認を要求 |
+| **中** | 警告を表示、PR 本文に乖離セクションを追加 |
+| **低** | PR 本文に記載のみ |
+
+#### 高重大度の乖離が検出された場合
+
+```markdown
+## ⚠️ 設計書との乖離を検出
+
+以下の乖離が検出されました。PR 作成前に確認してください。
+
+| 項目 | 設計書 | 実装 |
+|------|--------|------|
+| `TimerEngine::new()` | `fn new(config: Config) -> Self` | `fn new(config: Config, executor: HookExecutor) -> Self` |
+
+**選択肢**:
+1. **設計書を更新**: 実装に合わせて設計書を修正
+2. **実装を修正**: 設計書に合わせて実装を修正
+3. **乖離を承認**: 意図的な乖離として PR に記載して続行
+
+どれを選択しますか？
+```
+
+### 定期チェック（推奨）
+
+大規模な実装後は `/reverse-engineer` を実行して設計書を再生成し、
+既存の設計書と比較することを推奨します。
+
+```bash
+# 現在の実装から設計書を逆生成
+/reverse-engineer "src/daemon/"
+
+# 既存設計書との差分を確認
+diff docs/designs/detailed/pomodoro-timer/daemon-server.md \
+     docs/designs/reverse/pomodoro-timer-current.md
+```
+
+---
+
 ## Related Documents
 
 | Document | Purpose |
 |----------|---------|
 | [container-use.md](./container-use.md) | PR creation workflow, completion criteria |
 | [testing-strategy.md](./testing-strategy.md) | Test implementation guidelines |
+| [platform-exception.md](./platform-exception.md) | Platform-specific code exception policy |
+
+---
+
+## 変更履歴
+
+| 日付 | バージョン | 変更内容 |
+|:---|:---|:---|
+| 2026-01-07 | 1.1.0 | Automatic Divergence Detection セクションを追加 |
+| 2026-01-04 | 1.0.0 | 初版作成 |

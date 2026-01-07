@@ -1741,6 +1741,104 @@ def handle_ci_failure(pr_number: int, env_id: str) -> bool:
     return False  # リトライ超過 → escalate_ci_failure()
 ```
 
+#### 10.2.1 CI失敗の分類と対応（NEW）
+
+| 失敗カテゴリ | 検出パターン | 対応方法 | 環境 |
+|------------|-------------|---------|------|
+| **Lint/Clippy** | `warning:`, `error:`, `clippy::` | 自動修正 (`--fix`) | container-use |
+| **Test失敗** | `FAILED`, `test result: FAILED` | テストコード修正 | container-use |
+| **ビルドエラー** | `error[E`, `cannot find` | コード修正 | container-use |
+| **フォーマット** | `Diff in`, `would have been reformatted` | `cargo fmt` / `npm run format` | container-use |
+| **環境依存** | `platform exception`, `target not supported` | **環境再開** | container-use再開 |
+
+```python
+def analyze_failure(log: str) -> CIFailureAnalysis:
+    """CIログを分析して失敗種別を特定"""
+    
+    # Clippy/Lint エラー
+    if "clippy::" in log or "warning:" in log:
+        # 自動修正を試行
+        clippy_errors = extract_clippy_errors(log)
+        return CIFailureAnalysis(
+            type="lint",
+            errors=clippy_errors,
+            auto_fixable=True,
+            fix_command="cargo clippy --fix --allow-dirty --allow-staged"
+        )
+    
+    # テスト失敗
+    if "FAILED" in log or "test result: FAILED" in log:
+        failed_tests = extract_failed_tests(log)
+        return CIFailureAnalysis(
+            type="test",
+            errors=failed_tests,
+            auto_fixable=False,
+            suggestion="テストケースまたは実装を修正"
+        )
+    
+    # ビルドエラー
+    if "error[E" in log:
+        build_errors = extract_build_errors(log)
+        return CIFailureAnalysis(
+            type="build",
+            errors=build_errors,
+            auto_fixable=False,
+            suggestion="コンパイルエラーを修正"
+        )
+    
+    # フォーマットエラー
+    if "would have been reformatted" in log or "Diff in" in log:
+        return CIFailureAnalysis(
+            type="format",
+            auto_fixable=True,
+            fix_command="cargo fmt"  # or "npm run format"
+        )
+    
+    return CIFailureAnalysis(type="unknown", errors=[log])
+```
+
+#### 10.2.2 環境再開時の手順（Issue #XX で発生した問題への対応）
+
+CI修正時に container-use 環境を再開する必要がある場合：
+
+```python
+def fix_in_container(env_id: str, analysis: CIFailureAnalysis):
+    """container環境を再開して修正を実施"""
+    
+    # 1. 環境を再開
+    container-use_environment_open(
+        environment_id=env_id,
+        environment_source=get_repo_path(),
+        explanation="CI修正のため環境を再開"
+    )
+    
+    # 2. 自動修正可能な場合
+    if analysis.auto_fixable:
+        container-use_environment_run_cmd(
+            environment_id=env_id,
+            command=analysis.fix_command
+        )
+    else:
+        # 手動修正が必要
+        for error in analysis.errors:
+            # エラー箇所を特定して修正
+            fix_error(env_id, error)
+    
+    # 3. ローカルで検証
+    container-use_environment_run_cmd(
+        environment_id=env_id,
+        command="cargo clippy -- -D warnings && cargo test"
+    )
+    
+    # 4. push (force pushが必要な場合あり)
+    container-use_environment_run_cmd(
+        environment_id=env_id,
+        command="git add . && git commit -m 'fix: CI修正' && git push"
+    )
+```
+
+**重要**: 環境再開後は必ず `environments.json` の `last_used_at` を更新すること。
+
 #### 10.3 リトライ上限超過時のエスカレーション
 
 ```python
