@@ -162,9 +162,9 @@ tests/
 | Test Type | Naming Pattern | Example |
 |-----------|----------------|---------|
 | Unit | `test_<function>_<scenario>` | `test_parse_valid_input` |
-| Integration | `test_<component>_<interaction>` | `test_timer_sends_notification` |
-| E2E | `test_<scenario>_flow` | `test_full_pomodoro_cycle_flow` |
-| Ignored | Add `_requires_<env>` suffix | `test_launchctl_requires_macos` |
+| Integration | `test_<component>_<interaction>` | `test_service_sends_notification` |
+| E2E | `test_<scenario>_flow` | `test_full_checkout_flow` |
+| Ignored | Add `_requires_<env>` suffix | `test_native_api_requires_macos` |
 
 ---
 

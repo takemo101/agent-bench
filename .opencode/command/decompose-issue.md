@@ -222,31 +222,9 @@ def create_subtask_issues(
             subtask_id = parse_issue_number(result)
             created_ids.append(subtask_id)
 
-            # Sub-issueとして親Issueに登録（GraphQL API使用）
-            # Note: REST APIにはバグがあるため、GraphQL APIを使用
-            # Reference: https://github.com/cli/cli/issues/10378
-            try:
-                # 1. 親IssueとSubtaskのGraphQL Node IDを取得
-                parent_node_id = bash(f"gh issue view {parent_issue_id} --json id --jq '.id'").stdout.strip()
-                child_node_id = bash(f"gh issue view {subtask_id} --json id --jq '.id'").stdout.strip()
-                
-                if parent_node_id and child_node_id:
-                    # 2. GraphQL APIでSub-issue関係を追加
-                    bash(f'''
-                        gh api graphql \
-                          -H "GraphQL-Features: sub_issues" \
-                          -f 'query=mutation {{
-                            addSubIssue(input: {{
-                              issueId: "{parent_node_id}",
-                              subIssueId: "{child_node_id}"
-                            }}) {{
-                              issue {{ number }}
-                              subIssue {{ number }}
-                            }}
-                          }}' || true
-                    ''')
-            except:
-                pass # Sub-issue登録失敗は致命的エラーとしない
+            # Sub-issueとして親Issueに登録
+            # 詳細: {{skill:github-graphql-api}}
+            add_sub_issue(parent_issue_id, subtask_id)
         
         # 親Issueにサマリーをコメント
         add_decomposition_summary(parent_issue_id, subtasks, created_ids)

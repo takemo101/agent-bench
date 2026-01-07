@@ -181,7 +181,7 @@ Include in PR description:
 
 ```markdown
 ## Design Document Updates
-- Updated `docs/designs/detailed/pomodoro-timer/launch-agent.md`
+- Updated `docs/designs/detailed/{feature-name}/{component}.md`
   - Section 3.2: Changed struct name
   - Section 4.1: Added error handling
 ```

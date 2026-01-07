@@ -1078,32 +1078,10 @@ def create_issues_with_optimal_granularity(design_doc):
     # 5. Epic Issueに子Issue一覧を追加
     update_epic_with_children(epic_issue, created_issues)
     
-    # 6. 子IssueをSub-issueとしてEpicに登録 (v2.7 NEW → v2.8 GraphQL API使用)
-    # Note: REST APIにはバグがあるため、GraphQL APIを使用
-    # Reference: https://github.com/cli/cli/issues/10378
+    # 6. 子IssueをSub-issueとしてEpicに登録
+    # 詳細: {{skill:github-graphql-api}}
     for child in created_issues:
-        try:
-            # 1. EpicとChildのGraphQL Node IDを取得
-            epic_node_id = bash(f"gh issue view {epic_issue.number} --json id --jq '.id'").stdout.strip()
-            child_node_id = bash(f"gh issue view {child.number} --json id --jq '.id'").stdout.strip()
-            
-            if epic_node_id and child_node_id:
-                # 2. GraphQL APIでSub-issue関係を追加
-                bash(f'''
-                    gh api graphql \
-                      -H "GraphQL-Features: sub_issues" \
-                      -f 'query=mutation {{
-                        addSubIssue(input: {{
-                          issueId: "{epic_node_id}",
-                          subIssueId: "{child_node_id}"
-                        }}) {{
-                          issue {{ number }}
-                          subIssue {{ number }}
-                        }}
-                      }}' || true
-                ''')
-        except:
-            pass # Sub-issue登録失敗は致命的エラーとしない
+        add_sub_issue(epic_issue.number, child.number)
     
     return created_issues
 ```

@@ -294,6 +294,9 @@ docs/
 | [TDD実装フロー](./skill/tdd-implementation.md) | Red→Green→Refactorサイクル | **コード実装時** |
 | [environments.json管理](./skill/environments-json-management.md) | 環境ID追跡・ステータス管理API | **環境作成・削除時** |
 | [Sisyphus実装ガイド](./skill/sisyphus-implementation-guide.md) | Sisyphus専用の実行フロー・チェックリスト | **Issue実装時（Sisyphus）** |
+| [GitHub GraphQL API](./skill/github-graphql-api.md) | Sub-issue登録等のGraphQL API共通処理 | **Issue作成時** |
+| [承認ゲート](./skill/approval-gate.md) | ユーザー承認ゲートの共通フォーマット | **フェーズ移行時** |
+| [レビュアー共通](./skill/reviewer-common.md) | 実装レビュアーの共通ガイドライン | **レビュー時** |
 
 ---
 
@@ -395,6 +398,8 @@ container-use_environment_run_cmd(command="npm test")
 
 | 日付 | バージョン | 変更内容 |
 |:---|:---|:---|
+| 2026-01-08 | 3.17.5 | **汎用化 & スキル参照適用**: Pomodoro固有の例を汎用例に置換。decompose-issue.md/detailed-design-workflow.mdのGraphQLコードを `{{skill:github-graphql-api}}` 参照に置換。ワークフローの承認ゲートに `{{skill:approval-gate}}` 参照を追加 |
+| 2026-01-08 | 3.17.4 | **重複コード共通化 & エージェント最適化**: GraphQL API共通化（github-graphql-api.md）、承認ゲート共通化（approval-gate.md）、レビュアー共通ガイドライン作成。agent/ディレクトリ2,704行→2,407行（11%削減） |
 | 2026-01-08 | 3.17.3 | **implement-issues.md 分割（第2弾）**: 2,011行→1,427行（29%削減）。Issue粒度判定、TDD実装、environments.json管理、Sisyphus実装ガイドを分離 |
 | 2026-01-08 | 3.17.2 | **厳格レビュー対応**: 循環参照解消（subtask-detection.mdから実行ロジック削除）、品質レビューフロー分離（quality-review-flow.md）、重複定義削除 |
 | 2026-01-08 | 3.17.0 | **implement-issues.md 分割**: 2,590行→2,131行（18%削減）。CI監視フロー（ci-workflow.md）、Subtask検出ロジック（subtask-detection.md）を分離。Git conflict marker修正、セクション番号整合性修正 |
