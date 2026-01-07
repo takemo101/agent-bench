@@ -98,37 +98,9 @@ def implement_subtasks(parent_issue_id: int, subtask_ids: list[int]):
 
 ### container-worker内のレビューループ
 
-各container-workerは、以下のレビューループを実行してからPRを作成する:
+詳細は [implement-subtask-rules.md](../skill/implement-subtask-rules.md) を参照。
 
-```python
-def implement_with_review_loop(subtask_id: int, env_id: str):
-    """TDD実装 + レビューループ（container-worker内で実行）"""
-    
-    MAX_REVIEW_RETRIES = 3
-    
-    # TDD実装
-    implement_tdd(env_id, subtask_id)
-    
-    # レビューループ
-    for attempt in range(MAX_REVIEW_RETRIES):
-        # 品質レビュー実行
-        review_result = task(
-            subagent_type="backend-reviewer",  # or frontend-reviewer
-            prompt=build_review_prompt(subtask_id)
-        )
-        
-        score = review_result.get("score", 0)
-        
-        if score >= 9:
-            # ✅ レビュー通過 → PR作成へ
-            return {"status": "passed", "score": score}
-        
-        # ❌ スコア不足 → 修正
-        fix_issues(env_id, review_result.get("issues", []))
-    
-    # 3回失敗 → Draft PRでエスカレーション
-    return {"status": "escalated", "score": score}
-```
+**要約**: TDD実装 → レビュー（9点以上まで最大3回） → PR作成
 
 ### Subtask実装の原則
 
@@ -1189,53 +1161,16 @@ if not design_result.exists:
 ### 0.6. 設計書参照ルール（トークン最適化）⚠️ 必須
 
 > **⛔ 絶対禁止**: 設計書の全文読み込み
-> **✅ 必須**: Subtaskに必要なセクションのみ参照
+> **✅ 必須**: Subtaskに必要なセクションのみ参照（2,000トークン上限）
 
-#### 読み取り可能なセクション（ホワイトリスト）
+詳細は [implement-subtask-rules.md](../skill/implement-subtask-rules.md) セクション1を参照。
 
-| Subtask内容 | 読むべきセクション | 読んではいけない |
-|------------|------------------|----------------|
-| **型定義** | `## データ型`, `## インターフェース` | 画面設計、テスト仕様 |
-| **API実装** | `## エンドポイント`, `## リクエスト/レスポンス` | UI、インフラ |
-| **UI実装** | `## 画面仕様`, `## コンポーネント` | バックエンド、DB |
-| **テスト** | `## テストケース`, `## 境界条件` | 実装詳細 |
-
-#### 実装例
-
-```python
-def read_design_for_subtask(design_doc_path: str, subtask_type: str) -> str:
-    """Subtaskに必要なセクションのみ読み取る"""
-    
-    # セクション別の読み取りルール
-    section_map = {
-        "type_definition": ["## データ型", "## インターフェース", "## 型定義"],
-        "api_implementation": ["## エンドポイント", "## API", "## リクエスト"],
-        "ui_implementation": ["## 画面仕様", "## コンポーネント", "## UI"],
-        "test_implementation": ["## テストケース", "## テスト仕様"],
-    }
-    
-    allowed_sections = section_map.get(subtask_type, [])
-    
-    # 設計書をセクション単位で読み取り
-    content = read_sections_only(design_doc_path, allowed_sections)
-    
-    # トークン数チェック（2000トークン上限）
-    if estimate_tokens(content) > 2000:
-        content = summarize_to_limit(content, max_tokens=2000)
-    
-    return content
-```
-
-#### トークン予算
-
-| 項目 | 上限 |
-|------|------|
-| 設計書参照（1 Subtask） | 2,000 トークン |
-| Subtask Issue本文 | 500 トークン |
-| コードコンテキスト（レビュー時） | 3,000 トークン |
-| **合計（1 Subtask）** | **~6,000 トークン** |
-
-> **比較**: 従来は1 Issueで30,000トークン消費 → Subtask方式で1/5に削減
+| 実装内容 | 読むセクション |
+|---------|--------------|
+| 型定義 | `## データ型`, `## インターフェース` |
+| API | `## エンドポイント`, `## リクエスト/レスポンス` |
+| UI | `## 画面仕様`, `## コンポーネント` |
+| テスト | `## テストケース`, `## 境界条件` |
 
 ### 1. container-use環境構築
 
@@ -1443,82 +1378,26 @@ container-use_environment_run_cmd(command="cargo run -- status")
 
 ### 7. 品質レビュー ⚠️ 必須
 
-> **⚠️ 重要**: PR作成前に必ず品質レビューを実行すること。スキップ厳禁。
+> **⚠️ 重要**: PR作成前に必ず品質レビューを実行。スキップ厳禁。
+> 詳細は [implement-subtask-rules.md](../skill/implement-subtask-rules.md) セクション4を参照。
 
-#### 7.1 レビュー対象の確認
+#### レビューエージェント選択
 
-実装完了後、以下を確認してからレビューを依頼：
+| 実装内容 | エージェント |
+|----------|-------------|
+| バックエンド/CLI | `backend-reviewer` |
+| フロントエンド | `frontend-reviewer` |
+| DB関連 | `database-reviewer` |
 
-```python
-# Lint & 型チェック通過を確認
-container-use_environment_run_cmd(
-    environment_id=env_id,
-    environment_source="/path/to/repo",
-    command="cargo clippy -- -D warnings && cargo fmt --check"  # Rust
-    # command="npm run lint && npm run type-check"  # TypeScript
-)
-
-# テスト全通過を確認
-container-use_environment_run_cmd(
-    environment_id=env_id,
-    environment_source="/path/to/repo",
-    command="cargo test"  # Rust
-    # command="npm test"  # TypeScript
-)
-```
-
-#### 7.2 レビューエージェント選択
-
-| 実装内容 | 使用エージェント |
-|----------|------------------|
-| バックエンド/ライブラリ/CLI | `backend-reviewer` |
-| フロントエンドUI | `frontend-reviewer` |
-| データベース関連 | `database-reviewer` |
-| インフラ/CI/CD | `infra-reviewer` |
-| セキュリティ関連 | `security-reviewer` |
-
-複数領域にまたがる場合は、主要な領域のレビューエージェントを使用。
-
-#### 7.3 レビュー実行
-
-**`task` を使用してレビューエージェントを呼び出す**（✅ OK - レビューエージェントはMCPツール不要）：
-
-```python
-# backend-reviewer の例（container-worker内またはSisyphusから呼び出し）
-task(
-    subagent_type="backend-reviewer",
-    description="Issue #{issue_id} 実装コードレビュー",
-    prompt=f"""
-## レビュー対象
-- Issue: #{issue_id} - {issue_title}
-- 変更ファイル: {changed_files}
-- 設計書: {design_doc_path}
-
-## レビュー依頼
-以下の観点でコードをレビューし、10点満点でスコアリングしてください：
-
-1. **設計書との整合性** - 詳細設計書の仕様を正しく実装しているか
-2. **コード品質** - SOLID原則、命名規則、可読性
-3. **エラーハンドリング** - 適切なエラー処理、境界条件の考慮
-4. **テスト** - カバレッジ、エッジケースの網羅
-5. **セキュリティ** - 脆弱性、入力検証
-
-## 出力形式
-- **総合スコア**: X/10
-- **問題点**: （あれば具体的に）
-- **改善提案**: （あれば具体的に）
-"""
-)
-```
-
-#### 7.4 スコア判定
+#### スコア判定
 
 | スコア | アクション |
 |--------|----------|
-| **9点以上** | ✅ レビュー通過 → コミット & PR作成へ |
-| **7-8点** | ⚠️ 指摘事項を修正 → 再レビュー |
-| **6点以下** | ❌ 重大な問題あり → 設計見直しを検討 |
+| 9-10点 | ✅ PR作成へ |
+| 7-8点 | 修正 → 再レビュー |
+| 6点以下 | 設計見直し |
 
+<<<<<<< HEAD
 #### 7.4.0 客観的品質基準（必須条件）
 
 レビュースコアに加え、以下の**客観的基準**を満たす必要があります。
@@ -2138,11 +2017,12 @@ def post_pr_workflow_parallel(pr_results: list[dict]):
         # 失敗/タイムアウト: 環境保持、report_to_user()
 ```
 
-### 14. 結果の最小化ルール（トークン最適化）⚠️ 必須
+### 14. 結果の最小化ルール（トークン最適化）⚠️ 必須 ⛔ 違反厳禁
 
-> **⚠️ 重要**: container-workerからの結果は最小限の情報のみ保持し、親セッションのトークン消費を抑制する。
+> **⛔ 絶対ルール**: `background_output()` の結果をそのまま使用してはならない。
+> 必ず `collect_worker_result()` を経由して最小化すること。
 
-#### 保持する情報（ホワイトリスト）
+#### 許可される結果フィールド（5フィールドのみ）
 
 | フィールド | 型 | 説明 |
 |-----------|-----|------|
@@ -2193,13 +2073,34 @@ def collect_worker_result(task_id: str) -> dict:
     # - raw_result.get("review_comments")
 ```
 
-#### トークン削減効果
+#### 禁止される情報（絶対に親セッションに持ち込まない）
 
-| シナリオ | 従来 | 最適化後 | 削減率 |
-|---------|------|---------|--------|
-| 1 Subtask | ~5,000トークン | ~200トークン | 96% |
-| 5 Subtasks | ~25,000トークン | ~1,000トークン | 96% |
-| 10 Subtasks | ~50,000トークン | ~2,000トークン | 96% |
+- ❌ 詳細ログ
+- ❌ コード差分
+- ❌ レビューコメント全文
+- ❌ テスト出力
+- ❌ エラースタックトレース
+
+#### 必須実装パターン
+
+```python
+# ⛔ 禁止: 生の結果をそのまま使用
+result = background_output(task_id=task_id)  # 5,000トークン消費
+
+# ✅ 必須: 最小化関数を経由
+result = collect_worker_result(task_id)  # 200トークンで済む
+
+def collect_worker_result(task_id: str) -> dict:
+    raw = background_output(task_id=task_id)
+    return {k: raw.get(k) for k in ["subtask_id", "pr_number", "status", "score", "env_id"]}
+```
+
+#### 効果
+
+| Subtask数 | 従来 | 最適化後 | 削減率 |
+|-----------|------|---------|--------|
+| 1 | 5,000 | 200 | **96%** |
+| 5 | 25,000 | 1,000 | **96%** |
 
 #### build_subtask_worker_prompt() 実装
 
@@ -2476,18 +2377,17 @@ Subtask: {', '.join(f'#{s}' for s in subtasks)}
                 description=f"Subtask #{subtask_id} 実装",
                 prompt=f"""
 ## タスク
-Subtask #{subtask_id} を実装し、PRを作成してください。
+Subtask #{subtask_id} を実装しPRを作成せよ。
 
-## ブランチ情報（Sisyphusが作成済み）
-- ブランチ名: {branch_name}
-- ⚠️ 新規ブランチを作成しないこと（既存を使用）
-- container-use環境作成時に `from_git_ref="{branch_name}"` を指定
+## 必須手順
+1. まず `.opencode/skill/implement-subtask-rules.md` を読んでルールを把握
+2. ブランチ `{branch_name}` で container-use 環境を作成（from_git_ref指定）
+3. TDD → レビュー（9点以上） → PR作成
 
-## 親Issue
-- 親Issue: #{issue_id}（全Subtask完了後にSisyphusが自動クローズ）
+## 親Issue: #{issue_id}
 
-## 期待する出力（JSON形式）
-{{"subtask_id": {subtask_id}, "pr_number": N, "env_id": "xxx", "score": N}}
+## 出力（この形式のみ）
+{{"subtask_id": {subtask_id}, "pr_number": N, "env_id": "xxx", "score": N, "status": "success"}}
 """
             )
             
