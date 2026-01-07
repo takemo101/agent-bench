@@ -213,18 +213,7 @@ def implement_multiple_parent_issues(parent_issue_ids: list[int]):
 ### 依存関係がある場合
 
 Subtask間に依存関係がある場合は、依存元を先に実装する（順次処理なので自然に対応可能）。
-
-```python
-def implement_subtasks_with_deps(subtask_ids: list[int]):
-    """依存関係を考慮した順次実装"""
-    
-    # 依存関係順にソート
-    sorted_subtasks = topological_sort(subtask_ids)
-    
-    # 順次実装（依存元 → 依存先の順）
-    for subtask_id in sorted_subtasks:
-        implement_single_subtask(subtask_id)
-```
+詳細は「Subtask検出」セクションの `implement_subtasks_with_deps` を参照。
 
 ---
 
@@ -510,6 +499,34 @@ Issue番号を指定します。複数指定可能。
 ```
 親Issue #8 → Subtask #9 → #10 → #11 → 親Issue自動クローズ
             (各Subtaskが独立したブランチ・環境・PRを持つ)
+```
+
+#### 依存関係付きSubtask実装ロジック
+
+```python
+def implement_subtasks_with_deps(parent_id: int, subtask_ids: list[int]):
+    """依存関係を考慮したSubtask順次実装"""
+    
+    # 依存関係をチェックしてソート（subtask-detection.md参照）
+    sorted_subtasks = check_subtask_dependencies(subtask_ids)
+    report_to_user(f"📋 {len(subtask_ids)}件のSubtaskを依存関係順に実装します: {sorted_subtasks}")
+    
+    results = []
+    for i, subtask_id in enumerate(sorted_subtasks, 1):
+        report_to_user(f"🔄 Subtask {i}/{len(sorted_subtasks)}: #{subtask_id} を実装中...")
+        
+        # Subtask単体実装（ブランチ作成〜PR作成）
+        result = implement_single_subtask(subtask_id)
+        results.append(result)
+        
+        # 失敗したら中断
+        if result.get('status') == 'failed':
+            report_to_user(f"⚠️ Subtask #{subtask_id} の実装に失敗。後続をスキップします")
+            break
+            
+        # 成功したらCI監視〜マージへ（implement_single_subtask内でpost_pr_workflowが呼ばれる）
+    
+    return results
 ```
 
 ## ワークフロー概要
@@ -1131,169 +1148,21 @@ container-use_environment_run_cmd(command="cargo run -- status")
 - 起動に失敗した場合（パニック、エラー） → **修正必須**。
 - エラーメッセージが適切に出るか確認。
 
-### 7. 品質レビュー ⚠️ 必須
+### 7. 品質レビュー & 客観的基準 ⚠️ 必須
 
-> **⚠️ 重要**: PR作成前に必ず品質レビューを実行。スキップ厳禁。
-> 詳細は [implement-subtask-rules.md](../skill/implement-subtask-rules.md) セクション4を参照。
+> **詳細**: [品質レビューフロー & 客観的品質基準](../skill/quality-review-flow.md) を参照
 
-#### レビューエージェント選択
+**概要**: PR作成前に品質レビューを実行。レビュースコア9点以上かつ客観的基準（Lint/Test等）の全通過が必須。
 
-| 実装内容 | エージェント |
-|----------|-------------|
-| バックエンド/CLI | `backend-reviewer` |
-| フロントエンド | `frontend-reviewer` |
-| DB関連 | `database-reviewer` |
+| 項目 | 基準 | アクション |
+|------|------|------------|
+| レビュースコア | 9-10点 | ✅ 次のチェックへ |
+| 客観的基準 | 全クリア | ✅ PR作成承認リクエストへ |
+| **判定** | **両方合格** | **ユーザー承認ゲートへ進む** |
 
-#### スコア判定
+**フロー**: `レビュー実行 → 客観チェック → (失敗時:修正&再レビュー) → 合格 → ユーザー承認`
 
-| スコア | アクション |
-|--------|----------|
-| 9-10点 | ✅ PR作成へ |
-| 7-8点 | 修正 → 再レビュー |
-| 6点以下 | 設計見直し |
-
-#### 7.4.0 客観的品質基準（必須条件）
-
-レビュースコアに加え、以下の**客観的基準**を満たす必要があります。
-これらはAIの主観に依存せず、ツールで検証可能です。
-
-| 基準 | 検証コマンド | 必須 |
-|------|-------------|------|
-| **Lintエラー 0件** | `cargo clippy -- -D warnings` / `npm run lint` | ✅ |
-| **型エラー 0件** | `cargo check` / `npm run type-check` | ✅ |
-| **フォーマット準拠** | `cargo fmt --check` / `npm run format:check` | ✅ |
-| **テスト全通過** | `cargo test` / `npm test` | ✅ |
-| **カバレッジ 80%以上** | `cargo tarpaulin` / `npm run coverage` | 推奨 |
-
-```python
-def check_objective_criteria(env_id: str, language: str) -> ObjectiveCriteriaResult:
-    """客観的品質基準のチェック"""
-    
-    checks = {
-        "rust": {
-            "lint": "cargo clippy -- -D warnings",
-            "type": "cargo check",
-            "format": "cargo fmt --check",
-            "test": "cargo test",
-        },
-        "typescript": {
-            "lint": "npm run lint",
-            "type": "npm run type-check",
-            "format": "npm run format:check",
-            "test": "npm test",
-        }
-    }
-    
-    results = {}
-    lang_checks = checks.get(language, {})
-    
-    for check_name, command in lang_checks.items():
-        result = container-use_environment_run_cmd(
-            environment_id=env_id,
-            command=command
-        )
-        results[check_name] = result.exit_code == 0
-    
-    # 全て通過必須
-    all_passed = all(results.values())
-    
-    return ObjectiveCriteriaResult(
-        passed=all_passed,
-        details=results,
-        message="全ての客観的基準を満たしています" if all_passed else f"失敗: {[k for k, v in results.items() if not v]}"
-    )
-```
-
-**客観的基準が未達の場合**: レビュースコアに関係なく PR 作成不可。先に修正すること。
-
-#### 7.4.1 同一指摘の検出（無限ループ防止）
-
-同じ指摘が繰り返される場合は即座にエスカレーションします。
-
-```python
-def detect_repeated_issues(current_issues: list[str], previous_issues: list[str]) -> bool:
-    """前回と同じ指摘が繰り返されているか検出"""
-    
-    # 指摘内容の正規化（小文字化、空白除去）
-    normalize = lambda s: s.lower().strip()
-    
-    current_set = set(normalize(i) for i in current_issues)
-    previous_set = set(normalize(i) for i in previous_issues)
-    
-    # 50%以上の指摘が前回と同じ場合、繰り返しと判定
-    overlap = current_set & previous_set
-    if previous_set and len(overlap) / len(previous_set) >= 0.5:
-        return True
-    
-    return False
-
-def review_with_repeat_detection(env_id: str, subtask_id: int) -> ReviewResult:
-    """同一指摘検出付きレビューループ"""
-    
-    MAX_RETRIES = 3
-    previous_issues = []
-    
-    for attempt in range(MAX_RETRIES):
-        review = run_quality_review(env_id, subtask_id)
-        
-        if review.score >= 9:
-            return ReviewResult(status="passed", score=review.score)
-        
-        # 同一指摘検出
-        if attempt > 0 and detect_repeated_issues(review.issues, previous_issues):
-            report_to_user(f"""
-⚠️ 同一指摘が繰り返されています（Issue #{subtask_id}）
-
-**前回の指摘**: {previous_issues}
-**今回の指摘**: {review.issues}
-
-修正方法を変更するか、ユーザーに相談してください。
-""")
-            return ReviewResult(status="escalated", score=review.score, reason="repeated_issues")
-        
-        previous_issues = review.issues
-        fix_issues(env_id, review.issues)
-    
-    return ReviewResult(status="escalated", score=review.score, reason="max_retries")
-
-#### 7.5 修正 & 再レビュー
-
-スコア未達の場合：
-
-1. レビュー指摘事項をTODOリストに追加
-2. container-use環境内で修正を実施
-3. テスト再実行で問題なしを確認
-4. **再度レビューエージェントを呼び出し**（スキップ禁止）
-
-```python
-# 修正後の再レビュー
-task(
-    subagent_type="backend-reviewer",
-    description="Issue #{issue_id} 修正後再レビュー",
-    prompt=f"""
-## 前回レビュー
-- スコア: {previous_score}/10
-- 指摘事項: {issues}
-
-## 修正内容
-{fix_summary}
-
-## 再レビュー依頼
-修正が適切に行われたか確認し、再スコアリングしてください。
-"""
-)
-```
-
-#### 7.6 レビュー失敗時のエスカレーション
-
-3回連続でスコア9点未満の場合：
-
-1. Draft PRを作成（`--draft`フラグ）
-2. PRの本文に「レビュー未通過」と明記
-3. 未解決の指摘事項をPRコメントに記載
-4. ユーザーに報告して判断を仰ぐ
-
-### 7.7. ユーザー承認ゲート ⚠️ 必須
+### 7.1. ユーザー承認ゲート ⚠️ 必須
 
 > **⚠️ 重要**: PR作成前に必ずユーザーの承認を得ること。自動でPRを作成しない。
 

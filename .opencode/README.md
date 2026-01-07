@@ -289,6 +289,7 @@ docs/
 | [反復レビュー](./skill/iterative-review.md) | OpenCode自己改善の修正→レビュー→修正ループ | **.opencode/修正時** |
 | [CI監視ワークフロー](./skill/ci-workflow.md) | CI監視・修正・自動マージフロー | **PR作成後（必須）** |
 | [Subtask検出](./skill/subtask-detection.md) | 親Issue→Subtask検出・依存関係解決 | **Issue実装開始時** |
+| [品質レビューフロー](./skill/quality-review-flow.md) | レビュースコア基準・客観的品質基準 | **PR作成前（必須）** |
 
 ---
 
@@ -390,7 +391,7 @@ container-use_environment_run_cmd(command="npm test")
 
 | 日付 | バージョン | 変更内容 |
 |:---|:---|:---|
-| 2026-01-08 | 3.17.1 | **レビュー指摘修正**: ci-workflow.mdのescalate_ci_failure()呼び出し追加、environments.json更新ロジック追加。subtask-detection.mdのjqシェル変数展開エラー修正、implement_single_subtask()参照明確化 |
+| 2026-01-08 | 3.17.2 | **厳格レビュー対応**: 循環参照解消（subtask-detection.mdから実行ロジック削除）、品質レビューフロー分離（quality-review-flow.md）、重複定義削除 |
 | 2026-01-08 | 3.17.0 | **implement-issues.md 分割**: 2,590行→2,131行（18%削減）。CI監視フロー（ci-workflow.md）、Subtask検出ロジック（subtask-detection.md）を分離。Git conflict marker修正、セクション番号整合性修正 |
 | 2026-01-08 | 3.16.0 | **Sub-issue登録GraphQL化 & トークン最適化**: REST APIバグ回避のためGraphQL APIに変更（decompose-issue, detailed-design-workflow）。implement-issuesトークン消費65%削減（container-workerプロンプト簡素化、implement-subtask-rules.md分離） |
 | 2026-01-07 | 3.15.1 | **命名規則ガイドライン追加**: `issue_id`（コード内変数）vs `issue_number`（environments.json）の使い分けを明文化 |

@@ -154,38 +154,6 @@ def topological_sort(ids: list[int], deps: dict[int, list[int]]) -> list[int]:
 
 ---
 
-## 依存関係付きSubtask実装
-
-```python
-def implement_subtasks_with_deps(parent_id: int, subtask_ids: list[int]):
-    """依存関係を考慮したSubtask順次実装
-    
-    Note: implement_single_subtask() は implement-issues.md で定義。
-    container-worker への委譲とCI監視を含む。
-    """
-    
-    sorted_subtasks = check_subtask_dependencies(subtask_ids)
-    report_to_user(f"{len(subtask_ids)}件のSubtaskを依存関係順に実装: {sorted_subtasks}")
-    
-    results = []
-    for i, subtask_id in enumerate(sorted_subtasks, 1):
-        report_to_user(f"Subtask {i}/{len(sorted_subtasks)}: #{subtask_id} を実装中...")
-        
-        # implement_single_subtask() は implement-issues.md 参照
-        result = implement_single_subtask(subtask_id)
-        results.append(result)
-        
-        if result.get('status') == 'failed':
-            report_to_user(f"Subtask #{subtask_id} の実装に失敗。後続をスキップ")
-            break
-    
-    return results
-```
-
-> **Note**: `implement_single_subtask()` は [implement-issues.md](../command/implement-issues.md) で定義されています。
-
----
-
 ## 検出結果に応じた処理
 
 | 検出結果 | 処理 |
