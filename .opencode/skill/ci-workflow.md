@@ -166,3 +166,12 @@ def cleanup_environment(env_id: str, pr_number: int) -> bool:
 | CI修正中（リトライ中） | ❌ 削除しない |
 | Draft PR（エスカレーション中） | ❌ 削除しない |
 | PRレビュー修正待ち | ❌ 削除しない |
+
+---
+
+## 関連ドキュメント
+
+| ドキュメント | 内容 |
+|-------------|------|
+| {{skill:pr-merge-workflow}} | PR作成〜マージ〜ロールバックの全体フロー |
+| {{skill:environments-json-management}} | 環境ID管理・ステータス更新 |

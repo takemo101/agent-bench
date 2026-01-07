@@ -518,7 +518,7 @@ const {feature}Schema = z.object({
 |------|-----------|---------|
 | バリデーションエラー | 入力内容を確認してください | フォーム上部 |
 
-> 視覚的な表示は [mockup-error.html](./mockup-error.html) および [エラー画面スクリーンショット](./screen-error.png) を参照
+> 視覚的な表示はHTMLモックアップおよびスクリーンショットで確認（Phase 2で生成）
 ```
 
 ---

@@ -288,6 +288,7 @@ docs/
 | [申し送り処理](./skill/handover-process.md) | BE↔FE間の申し送り処理ルール | 実装時 |
 | [反復レビュー](./skill/iterative-review.md) | OpenCode自己改善の修正→レビュー→修正ループ | **.opencode/修正時** |
 | [CI監視ワークフロー](./skill/ci-workflow.md) | CI監視・修正・自動マージフロー | **PR作成後（必須）** |
+| [PRマージワークフロー](./skill/pr-merge-workflow.md) | PR作成〜マージ〜ロールバックの全体フロー | **PR作成・マージ時** |
 | [Subtask検出](./skill/subtask-detection.md) | 親Issue→Subtask検出・依存関係解決 | **Issue実装開始時** |
 | [品質レビューフロー](./skill/quality-review-flow.md) | レビュースコア基準・客観的品質基準 | **PR作成前（必須）** |
 | [Issue粒度判定](./skill/issue-size-estimation.md) | 200行ルール・サイズラベル・行数見積もり | **Issue実装開始時** |
@@ -400,6 +401,7 @@ container-use_environment_run_cmd(command="npm test")
 
 | 日付 | バージョン | 変更内容 |
 |:---|:---|:---|
+| 2026-01-08 | 3.21.0 | **重複削減・SSOT化**: (1) pr-merge-workflow.md新規作成（179行）、container-use.mdのPRマージセクション約130行をスキル参照に置換 (2) environments-json-management.mdをSSOT化（98→223行）、container-use.mdの約85行をスキル参照に置換 (3) ci-workflow.mdに関連ドキュメント追加。総削減: container-use.md 750→544行（**206行削減、27%**） |
 | 2026-01-08 | 3.20.0 | **ワークフロー構造改善**: bug-fix-workflow.mdをコマンドに昇格（`/bug-fix`）。container-use-guide.md軽量化（656→611行）。スキル参照形式の完全統一。古い変更履歴をCHANGELOG.mdにアーカイブ |
 | 2026-01-08 | 3.19.0 | **ワークフローレビュー対応**: Phase命名規約（workflow-phase-convention.md）を新規作成。スキル参照を`{{skill:xxx}}`形式に統一。bug-fix-workflow.mdの重複削除（1382→1322行）。孤立スキル参照の修正 |
 | 2026-01-08 | 3.18.0 | **ワークフロー汎用化**: 全ファイルからプロジェクト固有の例（Pomodoro, ECサイト, Daemon, launchctl等）を汎用プレースホルダに置換。スキル参照（github-graphql-api, approval-gate）を適用。Issue参照を削除し、ドキュメントを自己完結型に |

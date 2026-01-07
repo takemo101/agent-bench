@@ -24,117 +24,32 @@ If local build/test commands fail due to environment issues (e.g., wrong rustc v
 
 ## environments.json Management (MANDATORY)
 
+> **詳細**: {{skill:environments-json-management}} を参照
+
 **ALL container-use operations MUST update `.opencode/environments.json`** to track Issue/PR/Environment relationships.
 
-### File Location & Initialization
+### 必須更新ポイント（概要）
 
-```
-.opencode/environments.json
-```
+| トリガー | アクション |
+|---------|----------|
+| `environment_create` 成功 | エントリ追加（`status: "active"`） |
+| `gh pr create` 成功 | `pr_number`, `status: "pr_created"` 更新 |
+| PR merged | `status: "merged"` 更新 |
+| 環境削除 | エントリ削除 |
 
-If the file does not exist, create it with the initial structure:
+### セッション復旧（概要）
 
-```json
-{
-  "$schema": "./environments.schema.json",
-  "environments": []
-}
-```
-
-### Data Structure
-
-```json
-{
-  "env_id": "abc-123-def",
-  "branch": "feature/issue-42-user-auth",
-  "issue_number": 42,
-  "pr_number": null,
-  "title": "User authentication feature",
-  "status": "active",
-  "created_at": "2026-01-03T10:00:00Z",
-  "last_used_at": "2026-01-03T15:30:00Z"
-}
-```
-
-**Valid status values**: `active`, `pr_created`, `merged`, `abandoned`
-
-### MANDATORY Update Points (NON-NEGOTIABLE)
-
-| Trigger | Required Action | Fields to Update |
-|---------|----------------|------------------|
-| `environment_create` success | **ADD** new entry | `env_id`, `branch`, `issue_number`, `title`, `status: "active"`, `created_at`, `last_used_at` |
-| `environment_open` success | **UPDATE** existing entry | `last_used_at` |
-| `gh pr create` success | **UPDATE** existing entry | `pr_number`, `status: "pr_created"`, `last_used_at` |
-| PR merged | **UPDATE** existing entry | `status: "merged"`, `last_used_at` |
-| PR closed (without merge) | **UPDATE** existing entry | `status: "abandoned"`, `last_used_at` |
-| Environment deleted | **REMOVE** entry | Delete entire entry from array |
-
-### Implementation (Use Read/Edit Tools)
-
-**After `environment_create`:**
-```bash
-# 1. Read current file (or create if not exists)
-# 2. Add new entry to environments array
-# 3. Write updated file
-```
-
-Example entry to add:
-```json
-{
-  "env_id": "<returned_env_id>",
-  "branch": "feature/issue-<N>-<description>",
-  "issue_number": <N>,
-  "pr_number": null,
-  "title": "<environment_title>",
-  "status": "active",
-  "created_at": "<ISO8601_timestamp>",
-  "last_used_at": "<ISO8601_timestamp>"
-}
-```
-
-**After `gh pr create`:**
-```bash
-# 1. Read environments.json
-# 2. Find entry by env_id
-# 3. Update pr_number and status
-# 4. Write updated file
-```
-
-### Session Recovery (MANDATORY)
-
-When resuming work, **ALWAYS check environments.json FIRST**:
-
-```bash
-# 1. Read .opencode/environments.json
-# 2. Find entry matching the Issue number or PR number
-# 3. Use the stored env_id to reopen environment
-```
-
-**Decision Matrix based on environments.json:**
-
-| Entry Status | PR State | Action |
-|--------------|----------|--------|
-| `active` | No PR | Continue work, reopen with stored `env_id` |
-| `pr_created` | PR open | Reopen with stored `env_id` for fixes |
-| `pr_created` | PR merged | Update status to `merged`, delete env |
-| `merged` | N/A | No action needed (cleanup candidate) |
-| `abandoned` | N/A | Delete environment and entry |
-
-### Cleanup Policy
-
-| Condition | Action |
-|-----------|--------|
-| Status `merged` for 7+ days | Delete environment + remove entry |
-| Status `abandoned` | Delete immediately |
-| `last_used_at` > 30 days | Review and consider deletion |
+作業再開時、**environments.json を最優先で参照**：
+1. `issue_number` または `pr_number` でエントリ検索
+2. `env_id` を使用して環境を再開
 
 ### Hard Blocks
 
-| Violation | Consequence |
-|-----------|-------------|
-| Creating environment without adding to environments.json | **FORBIDDEN** - breaks recovery |
-| Creating PR without updating environments.json | **FORBIDDEN** - loses tracking |
-| Deleting environment without removing from environments.json | **FORBIDDEN** - stale data |
+| 違反 | 結果 |
+|------|------|
+| 環境作成時に未登録 | **FORBIDDEN** - 復旧不可 |
+| PR作成時に未更新 | **FORBIDDEN** - 追跡不可 |
+| 環境削除時に未更新 | **FORBIDDEN** - stale data |
 
 ---
 
@@ -523,141 +438,18 @@ Work is complete when ALL conditions are met:
 
 ### PR Merge Flow (MANDATORY)
 
-```bash
-# 1. Create PR (with "Closes #XX" in body for auto-close)
-gh pr create --title "..." --body "..."
+> **詳細**: {{skill:pr-merge-workflow}} を参照
 
-# 2. Update environments.json (MANDATORY)
-# - Set pr_number to the created PR number
-# - Set status to "pr_created"
-# - Update last_used_at
+**概要**: PR作成 → CI待機 → マージ → クリーンアップ → environments.json更新
 
-# 3. Wait for CI to complete (NEVER skip this step)
-gh pr checks <pr-number> --watch
+| フェーズ | 必須アクション |
+|---------|--------------|
+| PR作成 | `Closes #XX` でIssue参照、テンプレート使用 |
+| CI待機 | `gh pr checks --watch` で完了を待つ |
+| マージ | `gh pr merge --merge --delete-branch` |
+| クリーンアップ | 環境削除 + environments.json更新 |
 
-# 4. Merge only after CI passes (with branch deletion)
-gh pr merge <pr-number> --merge --delete-branch
-# Note: If --delete-branch fails due to worktree error, merge without it and delete branch manually
-
-# 5. Verify issue auto-closed (if "Closes #XX" was used)
-gh issue view <issue-number>  # Should show "CLOSED"
-
-# 6. Clean up environment
-container-use delete <env_id>           # Delete environment
-
-# 7. Update environments.json (MANDATORY)
-# - Either set status to "merged" OR remove entry entirely
-```
-
-**Merge Strategy**:
-- `--merge`: Default. Preserves commit history.
-- `--squash`: Use for feature branches with many WIP commits.
-- `--rebase`: Use when linear history is required.
-
-**Worktree Conflict**: If `--delete-branch` fails due to worktree error, merge without it. Delete branch manually later if needed.
-
-**HARD BLOCK**: Never merge a PR without confirming CI success.
-
-### Rollback Procedure (Post-Merge Issues)
-
-PRマージ後に問題が発覚した場合のロールバック手順。
-
-#### 1. 問題の切り分け
-
-| 問題の種類 | 対応 |
-|-----------|------|
-| 軽微なバグ | 新しいPRで修正（ロールバック不要） |
-| 重大なバグ（本番影響） | git revert でロールバック |
-| セキュリティ問題 | 即座にロールバック + 緊急対応 |
-
-#### 2. git revert によるロールバック
-
-```bash
-# 1. 問題のコミットを特定
-git log --oneline -10
-
-# 2. revert コミットを作成（マージコミットの場合は -m 1）
-git revert <commit-hash>
-# or (for merge commits)
-git revert -m 1 <merge-commit-hash>
-
-# 3. revert 用の PR を作成
-gh pr create --title "revert: <original PR title>" --body "## Rollback
-Reverts PR #<original-pr-number>
-
-**Reason**: <問題の説明>
-"
-
-# 4. 緊急時は管理者権限でマージ
-gh pr merge <pr-number> --admin --merge
-```
-
-#### 3. ロールバック後の対応
-
-| ステップ | 内容 |
-|---------|------|
-| 1 | 問題の原因を調査（ログ、エラーメッセージ確認） |
-| 2 | 修正版を実装（新しいブランチで） |
-| 3 | 通常の PR フローで再マージ |
-| 4 | 振り返りメモを作成（再発防止） |
-
-#### 4. ロールバック時の environments.json
-
-ロールバック時は新しい環境を作成：
-
-```python
-def handle_rollback(original_pr_number: int):
-    """ロールバック時の環境管理"""
-    
-    # 1. 新しい環境を作成（ロールバック用）
-    env_id = container-use_environment_create(
-        title=f"Rollback PR #{original_pr_number}"
-    )
-    
-    # 2. environments.json に登録
-    register_environment(
-        issue_id=None,  # ロールバックは Issue に紐づかない
-        env_id=env_id,
-        branch=f"revert/pr-{original_pr_number}",
-        title=f"Rollback PR #{original_pr_number}"
-    )
-```
-
-### PR Description Template (MANDATORY)
-
-Use the following format when creating PRs with `gh pr create`:
-
-```bash
-gh pr create --title "the pr title" --body "$(cat <<'EOF'
-## Summary
-<1-3 bullet points summarizing changes>
-
-## Related Issues
-Closes #XX
-
-## Changes
-- <specific change 1>
-- <specific change 2>
-
-## Testing
-- [ ] `cargo test` / `npm test` passed
-- [ ] `cargo clippy` / `npm run lint` passed
-- [ ] Manual verification (if applicable)
-
-## Design Document Alignment
-- [ ] Implementation matches design document
-- [ ] OR: Deviations documented below
-
-### Deviations from Design (if any)
-<List any intentional differences from design docs with reasoning>
-EOF
-)"
-```
-
-**Key Points**:
-- `Closes #XX` automatically closes the related Issue when PR is merged
-- Multiple issues: `Closes #12, Closes #13`
-- Design alignment section ensures traceability
+**HARD BLOCK**: CIが成功するまでマージしない。ロールバック手順も {{skill:pr-merge-workflow}} に記載。
 
 ### Required Outputs
 
@@ -735,6 +527,7 @@ issue_id = entry["issue_number"]  # Map JSON field to variable
 | [Testing Strategy](./testing-strategy.md) | Handle environment-dependent code testing | When writing tests for OS/hardware-dependent code |
 | [Platform Exception Policy](./platform-exception.md) | Platform-specific code exception rules | When implementing macOS/Windows-specific code |
 | [container-use Guide](../skill/container-use-guide.md) | Step-by-step container environment setup | First time using container-use |
+| [PR Merge Workflow](../skill/pr-merge-workflow.md) | PR creation to merge and cleanup | When creating/merging PRs |
 
 ---
 
@@ -742,6 +535,8 @@ issue_id = entry["issue_number"]  # Map JSON field to variable
 
 | 日付 | バージョン | 変更内容 |
 |:---|:---|:---|
+| 2026-01-08 | 3.21.0 | PRマージフローをskill参照に置換（約130行削減）。Related Documentsにpr-merge-workflow追加 |
+| 2026-01-08 | 3.21.0 | environments.json管理をskill参照に置換（約85行削減）。environments-json-management.mdをSSOT化 |
 | 2026-01-07 | 3.15.1 | 命名規則ガイドライン追加: issue_id vs issue_number の使い分けを明文化 |
 | 2026-01-07 | 3.15.0 | 厳格レビュー対応: Session State ManagementをSSOT化（Supermemoryは補助ログに）、ロールバック手順追加、--delete-branch統一 |
 | 2026-01-07 | 3.14.0 | Session Summary Auto-Save セクションを追加。Supermemory との連携による自動復旧機能を追加。Related Documents に Platform Exception Policy を追加 |
