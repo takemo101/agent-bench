@@ -67,7 +67,7 @@ While implementing:
 
    | Category | Examples | Action Required |
    |----------|----------|-----------------|
-   | **Naming** | `LaunchAgentStatus` → `ServiceStatus` | Note in PR |
+   | **Naming** | `UserStatus` → `AccountStatus` | Note in PR |
    | **API Shape** | Additional parameters, changed return types | Update design OR note in PR |
    | **Architecture** | Different module structure | Update design AND note in PR |
    | **Behavior** | Different error handling, edge cases | Update design AND note in PR |
@@ -113,8 +113,8 @@ When documenting deviations in PR:
 
 | Design Spec | Implementation | Reason |
 |-------------|----------------|--------|
-| `LaunchAgentStatus` struct | `ServiceStatus` struct | More generic naming for future extensibility |
-| `fn get_status() -> Status` | `fn get_status() -> Result<ServiceStatus>` | Added error handling for launchctl failures |
+| `UserStatus` struct | `AccountStatus` struct | More generic naming for future extensibility |
+| `fn get_status() -> Status` | `fn get_status() -> Result<AccountStatus, Error>` | Added error handling for edge cases |
 ```
 
 ---
@@ -172,7 +172,7 @@ When updating design documents after implementation:
 Add a note at the updated section:
 
 ```markdown
-> **Updated**: 2026-01-04 - Changed `LaunchAgentStatus` to `ServiceStatus` per PR #54
+> **Updated**: 2026-01-04 - Changed `UserStatus` to `AccountStatus` per PR #54
 ```
 
 ### Step 4: Cross-Reference in PR

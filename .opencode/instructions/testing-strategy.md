@@ -6,12 +6,9 @@ This document defines testing strategies for code that depends on specific envir
 
 ---
 
-## Related Issues
+## Overview
 
-- **Issue #13**: [Test] コンポーネント間統合テスト - Integration tests for daemon-CLI, timer-notification
-- **Issue #14**: [Test] E2Eテストとパフォーマンステスト - End-to-end and performance tests
-
-This document provides guidelines for implementing these test issues.
+This document provides guidelines for testing environment-dependent code, particularly platform-specific functionality that may not be available in container or CI environments.
 
 ---
 
@@ -33,9 +30,9 @@ This document provides guidelines for implementing these test issues.
 | Category | Examples | Testing Strategy |
 |----------|----------|------------------|
 | **Pure Logic** | Data transformations, calculations, parsing | Standard unit tests |
-| **OS API Calls** | launchctl, systemctl, Windows Registry | Mock or `#[ignore]` |
-| **File System** | Config files, log files, plist files | tempdir or Mock |
-| **Network** | HTTP clients, IPC sockets | Mock server or `#[ignore]` |
+| **OS API Calls** | Platform-specific commands (systemctl, Windows Registry, etc.) | Mock or `#[ignore]` |
+| **File System** | Config files, log files, platform-specific configs | tempdir or Mock |
+| **Network** | HTTP clients, sockets, inter-process communication | Mock server or `#[ignore]` |
 | **Hardware** | Audio devices, display, sensors | `#[ignore]` + manual testing |
 
 ---
@@ -48,19 +45,21 @@ Abstract OS-dependent operations behind traits for testability:
 
 ```rust
 // Define trait for the operation
-pub trait LaunchctlExecutor {
-    fn load(&self, plist_path: &Path) -> Result<()>;
-    fn unload(&self, plist_path: &Path) -> Result<()>;
+pub trait ServiceManager {
+    fn start(&self, service_name: &str) -> Result<()>;
+    fn stop(&self, service_name: &str) -> Result<()>;
     fn list(&self) -> Result<Vec<ServiceInfo>>;
 }
 
-// Production implementation
-pub struct RealLaunchctl;
+// Production implementation (platform-specific)
+pub struct SystemServiceManager;
 
-impl LaunchctlExecutor for RealLaunchctl {
-    fn load(&self, plist_path: &Path) -> Result<()> {
-        Command::new("launchctl")
-            .args(["load", "-w", plist_path.to_str().unwrap()])
+impl ServiceManager for SystemServiceManager {
+    fn start(&self, service_name: &str) -> Result<()> {
+        // Platform-specific implementation
+        // e.g., systemctl, launchctl, Windows Service API
+        Command::new("systemctl")
+            .args(["start", service_name])
             .status()?;
         Ok(())
     }
@@ -69,16 +68,16 @@ impl LaunchctlExecutor for RealLaunchctl {
 
 // Test implementation
 #[cfg(test)]
-pub struct MockLaunchctl {
-    pub load_result: Result<()>,
-    pub unload_result: Result<()>,
+pub struct MockServiceManager {
+    pub start_result: Result<()>,
+    pub stop_result: Result<()>,
     pub services: Vec<ServiceInfo>,
 }
 
 #[cfg(test)]
-impl LaunchctlExecutor for MockLaunchctl {
-    fn load(&self, _path: &Path) -> Result<()> {
-        self.load_result.clone()
+impl ServiceManager for MockServiceManager {
+    fn start(&self, _name: &str) -> Result<()> {
+        self.start_result.clone()
     }
     // ... other methods
 }
@@ -110,18 +109,18 @@ pub mod mocks {
 For tests that require specific environments:
 
 ```rust
-// Skip in CI, run locally on macOS
+// Skip in CI, run locally with specific platform
 #[test]
-#[ignore = "Requires macOS with launchctl"]
-fn test_launchctl_integration() {
+#[ignore = "Requires platform-specific service manager"]
+fn test_service_manager_integration() {
     // This test only runs with: cargo test -- --ignored
 }
 
 // Platform-specific test
 #[test]
-#[cfg(target_os = "macos")]
-fn test_macos_specific_feature() {
-    // Only compiled and run on macOS
+#[cfg(target_os = "linux")]
+fn test_linux_specific_feature() {
+    // Only compiled and run on Linux
 }
 
 // CI-aware test
@@ -184,9 +183,9 @@ jobs:
       - name: Run tests
         run: cargo test
       
-      # Run ignored tests only on macOS
-      - name: Run macOS-specific tests
-        if: matrix.os == 'macos-latest'
+      # Run ignored tests only on specific platforms
+      - name: Run platform-specific tests
+        if: matrix.os == 'macos-latest' || matrix.os == 'ubuntu-latest'
         run: cargo test -- --ignored
 ```
 
@@ -208,9 +207,9 @@ jobs:
 
 | Component | Mock? | Reason |
 |-----------|-------|--------|
-| External commands (launchctl, systemctl) | YES | Not available in CI |
+| External commands (platform-specific) | YES | Not available in all CI environments |
 | File system (config files) | PARTIAL | Use tempdir for isolation |
-| Network (IPC sockets) | YES | Avoid port conflicts |
+| Network (sockets, HTTP) | YES | Avoid port conflicts |
 | Time (delays, timers) | YES | Speed up tests |
 | Audio playback | YES | No audio device in CI |
 | Notifications | YES | No notification center in CI |
@@ -282,7 +281,7 @@ mod tests {
 Each test file should have a header comment:
 
 ```rust
-//! # Timer Engine Tests
+//! # Core Engine Tests
 //!
 //! ## Environment Requirements
 //! - None (pure logic tests)
@@ -292,7 +291,7 @@ Each test file should have a header comment:
 //! - `MockSoundPlayer`
 //!
 //! ## Ignored Tests
-//! - `test_real_notification_*` - Requires macOS notification center
+//! - `test_real_notification_*` - Requires platform notification center
 ```
 
 ### Ignored Test Documentation
@@ -301,8 +300,8 @@ Each `#[ignore]` test must have a reason:
 
 ```rust
 #[test]
-#[ignore = "Requires macOS 13+ with Focus Mode enabled"]
-fn test_focus_mode_activation() {
+#[ignore = "Requires platform-specific notification API"]
+fn test_native_notification() {
     // ...
 }
 ```

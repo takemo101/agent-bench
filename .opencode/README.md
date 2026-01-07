@@ -208,7 +208,7 @@ flowchart TB
 /basic-design-workflow "REQ-XXX.md" --resume-from=phase2
 
 # 詳細設計で特定機能のみ再実行
-/detailed-design-workflow "BASIC-XXX.md" --target="ログイン" --resume-from=phase3
+/detailed-design-workflow "BASIC-XXX.md" --target="ユーザー管理" --resume-from=phase3
 ```
 
 ---
@@ -254,16 +254,16 @@ docs/
 # docs/memos/my-idea.md
 
 # 2. 要件定義書を作成
-/req-workflow "プロジェクト: ECサイト, ビジネス: 売上向上, メモ: docs/memos/my-idea.md"
+/req-workflow "プロジェクト: タスク管理システム, ビジネス: チーム生産性向上, メモ: docs/memos/my-idea.md"
 
 # 3. 技術キャッチアップ（推奨）
-/tech-catchup-workflow "技術: Next.js 15, Prisma, 深度: standard, 要件: docs/requirements/REQ-FT-001_ECサイト.md"
+/tech-catchup-workflow "技術: Next.js 15, Prisma, 深度: standard, 要件: docs/requirements/REQ-XXX-001_機能名.md"
 
 # 4. 基本設計書を作成
-/basic-design-workflow "docs/requirements/REQ-FT-001_ECサイト.md"
+/basic-design-workflow "docs/requirements/REQ-XXX-001_機能名.md"
 
 # 5. 詳細設計書を作成
-/detailed-design-workflow "docs/designs/basic/BASIC-FT-001_ECサイト.md"
+/detailed-design-workflow "docs/designs/basic/BASIC-XXX-001_機能名.md"
 
 # 6. 実装開始
 /implement-issues
@@ -398,7 +398,7 @@ container-use_environment_run_cmd(command="npm test")
 
 | 日付 | バージョン | 変更内容 |
 |:---|:---|:---|
-| 2026-01-08 | 3.17.5 | **汎用化 & スキル参照適用**: Pomodoro固有の例を汎用例に置換。decompose-issue.md/detailed-design-workflow.mdのGraphQLコードを `{{skill:github-graphql-api}}` 参照に置換。ワークフローの承認ゲートに `{{skill:approval-gate}}` 参照を追加 |
+| 2026-01-08 | 3.18.0 | **ワークフロー汎用化**: 全ファイルからプロジェクト固有の例（Pomodoro, ECサイト, Daemon, launchctl等）を汎用プレースホルダに置換。スキル参照（github-graphql-api, approval-gate）を適用。Issue参照を削除し、ドキュメントを自己完結型に |
 | 2026-01-08 | 3.17.4 | **重複コード共通化 & エージェント最適化**: GraphQL API共通化（github-graphql-api.md）、承認ゲート共通化（approval-gate.md）、レビュアー共通ガイドライン作成。agent/ディレクトリ2,704行→2,407行（11%削減） |
 | 2026-01-08 | 3.17.3 | **implement-issues.md 分割（第2弾）**: 2,011行→1,427行（29%削減）。Issue粒度判定、TDD実装、environments.json管理、Sisyphus実装ガイドを分離 |
 | 2026-01-08 | 3.17.2 | **厳格レビュー対応**: 循環参照解消（subtask-detection.mdから実行ロジック削除）、品質レビューフロー分離（quality-review-flow.md）、重複定義削除 |

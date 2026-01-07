@@ -29,7 +29,7 @@ $ARGUMENTS（対象技術リスト、調査深度など）
 ```
 技術: Next.js 15, Prisma, TanStack Query v5
 深度: standard
-要件: docs/requirements/REQ-FT-001_ECサイト.md
+要件: docs/requirements/REQ-XXX-001_機能名.md
 目的: 半年ぶりの技術更新、Breaking Changes確認
 ```
 
