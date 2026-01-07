@@ -433,5 +433,6 @@ def basic_design_workflow(req_path):
 - 前工程: `/req-workflow`
 - **推奨前工程**: `/tech-catchup-workflow`（技術キャッチアップ）
 - 次工程: `/detailed-design-workflow`
-- 技術スタック定義: `@design-document-types`
+- 技術スタック定義: {{skill:design-document-types}}
 - 技術調査レポート: `docs/research/TECH-*.md`
+- Phase規約: {{skill:workflow-phase-convention}}

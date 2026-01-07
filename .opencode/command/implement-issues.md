@@ -98,7 +98,7 @@ def implement_subtasks(parent_issue_id: int, subtask_ids: list[int]):
 
 ### container-worker内のレビューループ
 
-詳細は [implement-subtask-rules.md](../skill/implement-subtask-rules.md) を参照。
+詳細は {{skill:implement-subtask-rules}} を参照。
 
 **要約**: TDD実装 → レビュー（9点以上まで最大3回） → PR作成
 
@@ -402,7 +402,7 @@ Issue番号を指定します。複数指定可能。
 
 ### 🔄 親Issue → Subtask自動検出（重要）
 
-> **詳細**: [Subtask検出 & 依存関係解決](../skill/subtask-detection.md) を参照
+> **詳細**: {{skill:subtask-detection}} を参照
 
 **概要**: 単一Issue指定時は、必ずSubtaskの有無を確認。Subtaskがある場合、各Subtaskごとに独立したブランチ・環境・PRを作成して**順次実装**する。
 
@@ -731,7 +731,7 @@ if not design_result.exists:
 > **⛔ 絶対禁止**: 設計書の全文読み込み
 > **✅ 必須**: Subtaskに必要なセクションのみ参照（2,000トークン上限）
 
-詳細は [implement-subtask-rules.md](../skill/implement-subtask-rules.md) セクション1を参照。
+詳細は {{skill:implement-subtask-rules}} セクション1を参照。
 
 | 実装内容 | 読むセクション |
 |---------|--------------|
@@ -815,7 +815,7 @@ Issueのコメントをスキャンし、未完了の申し送り事項があれ
 
 ### 6. 申し送り作成
 
-他領域への影響がある場合は [申し送り処理ガイド](../skill/handover-process.md) に従う。
+他領域への影響がある場合は {{skill:handover-process}} に従う。
 
 ### 6.5. 実装完了自己チェック ⚠️ 必須
 
@@ -860,7 +860,7 @@ container-use_environment_run_cmd(command="cargo run -- status")
 
 ### 7. 品質レビュー & 客観的基準 ⚠️ 必須
 
-> **詳細**: [品質レビューフロー & 客観的品質基準](../skill/quality-review-flow.md) を参照
+> **詳細**: {{skill:quality-review-flow}} を参照
 
 **概要**: PR作成前に品質レビューを実行。レビュースコア9点以上かつ客観的基準（Lint/Test等）の全通過が必須。
 
@@ -1005,7 +1005,7 @@ Closes #{issue_id}
 
 ### 10. CI監視 & 自動マージ ⚠️ 必須
 
-> **詳細**: [CI監視 & マージワークフロー](../skill/ci-workflow.md) を参照
+> **詳細**: {{skill:ci-workflow}} を参照
 
 **概要**: PR作成後、CIの完了を待ち、結果に応じて自動マージまたは修正を行う。
 
@@ -1308,7 +1308,7 @@ Subtask #{subtask_id} を実装し、PRを作成してください。
 
 ## 技術スタック別設定
 
-詳細は [container-use環境構築ガイド](../skill/container-use-guide.md) を参照。
+詳細は {{skill:container-use-guide}} を参照。
 
 | スタック | base_image | setup_commands |
 |---------|------------|----------------|
@@ -1410,17 +1410,20 @@ def safe_gh_api_call(command: str, max_retries: int = 3) -> tuple[bool, str]:
 
 {{skill:sisyphus-implementation-guide}}
 
-## 参考
+## 参考スキル
 
-- [container-use環境構築ガイド](../skill/container-use-guide.md)
-- [申し送り処理ガイド](../skill/handover-process.md)
-- [コード品質ルール](../skill/code-quality-rules.md)
-- [CI監視 & マージワークフロー](../skill/ci-workflow.md)
-- [Subtask検出 & 依存関係解決](../skill/subtask-detection.md)
-- [Issue粒度判定](../skill/issue-size-estimation.md)
-- [TDD実装フロー](../skill/tdd-implementation.md)
-- [environments.json管理](../skill/environments-json-management.md)
-- [Sisyphus実装ガイド](../skill/sisyphus-implementation-guide.md)
+| スキル | 用途 |
+|--------|------|
+| {{skill:container-use-guide}} | 環境構築・サービス統合 |
+| {{skill:handover-process}} | BE↔FE間の申し送り |
+| {{skill:code-quality-rules}} | 500行ルール、命名規則 |
+| {{skill:ci-workflow}} | CI監視・修正・マージ |
+| {{skill:subtask-detection}} | Subtask検出・依存関係 |
+| {{skill:issue-size-estimation}} | Issue粒度判定・見積もり |
+| {{skill:tdd-implementation}} | Red→Green→Refactor |
+| {{skill:environments-json-management}} | 環境ID追跡 |
+| {{skill:sisyphus-implementation-guide}} | Sisyphus実行フロー |
+| {{skill:workflow-phase-convention}} | Phase番号規約 |
 
 ---
 

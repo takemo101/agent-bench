@@ -1,6 +1,13 @@
+---
+description: バグ報告から修正完了までの完全ワークフロー（Issue作成→実装→PR→マージ）
+argument-hint: "[Issue番号] または バグの説明"
+---
+
 # バグ修正完全ワークフロー
 
 バグ発見から修正完了までの完全なライフサイクルを自動化します。
+
+> **Phase規約**: {{skill:workflow-phase-convention}} を参照
 
 ---
 
@@ -1284,88 +1291,28 @@ container-use環境が利用できません。
 
 バグ修正時も `/implement-issues` と同様、プラットフォーム固有コードの例外ルールが適用されます。
 
-### 適用条件（すべて満たす必要あり）
-
-| 条件 | 説明 |
-|------|------|
-| ① プラットフォーム固有API | macOS専用（objc2等）、Windows専用、iOS/Android専用 |
-| ② コンテナで検証不可 | LinuxコンテナではビルドまたはAPIが利用不可 |
-| ③ CI環境で検証可能 | GitHub Actions等の対応ランナーで最終検証 |
+> **詳細**: [プラットフォーム例外ポリシー](../instructions/platform-exception.md) を参照
 
 ### バグ修正での適用例
 
 | バグ内容 | 例外適用 | 理由 |
 |---------|---------|------|
-| macOS/Windows ネイティブ通知が表示されない | ✅ 適用 | プラットフォーム固有 API はコンテナで動作不可 |
-| システムサウンド再生が失敗 | ✅ 適用 | OS オーディオ API はコンテナで動作不可 |
-| システムトレイ表示がおかしい | ✅ 適用 | プラットフォーム固有 UI はコンテナで動作不可 |
-| IPC ソケット通信エラー | ❌ 不適用 | Unix Domain Socket はコンテナで検証可能 |
-| 設定ファイル読み込み失敗 | ❌ 不適用 | クロスプラットフォームのファイル I/O |
-
-### 例外適用時のワークフロー
-
-```python
-def apply_platform_exception_for_bugfix(issue_id: int) -> PlatformDecision:
-    """
-    バグ修正時のプラットフォーム例外判定
-    
-    `/implement-issues` のロジックを再利用
-    """
-    
-    # Issue情報を取得
-    issue = fetch_github_issue(issue_id)
-    
-    # 関連する設計書を検索
-    design_docs = find_related_design_docs(issue)
-    
-    if not design_docs:
-        # 設計書がない場合、Issue本文から判定
-        return detect_platform_specific_from_issue(issue)
-    
-    # 設計書から使用ライブラリを抽出
-    libraries = extract_libraries_from_design(design_docs[0])
-    
-    # プラットフォーム固有ライブラリチェック
-    platform_specific = {
-        "macos": ["objc2", "cocoa", "core-foundation", "core-graphics", 
-                  "core-audio", "security-framework", "appkit"],
-        "windows": ["windows-rs", "winapi", "win32"],
-    }
-    
-    for platform, libs in platform_specific.items():
-        if any(lib in libraries for lib in libs):
-            return PlatformDecision(
-                use_exception=True,
-                platform=platform,
-                reason=f"{platform}専用APIでコンテナビルド不可",
-                executor="host"  # Sisyphusがホスト環境で直接実装
-            )
-    
-    return PlatformDecision(
-        use_exception=False,
-        executor="container-worker"
-    )
-```
-
-### 例外適用時の追加要件
-
-| 要件 | 説明 |
-|------|------|
-| PR本文に明記 | `## ⚠️ 特記事項 > container-use非使用` セクションに理由を記載 |
-| CI検証必須 | macOS/Windowsランナーで動作確認 |
-| 警告コメント | 変更ファイルの先頭に `// ⚠️ WARNING: Modified outside container-use` |
+| ネイティブ通知が表示されない | ✅ 適用 | プラットフォーム固有 API |
+| システムサウンド再生が失敗 | ✅ 適用 | OS オーディオ API |
+| システムトレイ表示がおかしい | ✅ 適用 | プラットフォーム固有 UI |
+| ソケット通信エラー | ❌ 不適用 | クロスプラットフォーム |
+| 設定ファイル読み込み失敗 | ❌ 不適用 | クロスプラットフォーム |
 
 ## 関連ドキュメント
 
-| ドキュメント | 参照タイミング | 参照セクション |
-|-------------|---------------|---------------|
-| [/implement-issues](../command/implement-issues.md) | 実装フェーズの詳細、プラットフォーム例外判定ロジック | セクション2（実装フェーズ）、プラットフォーム例外 |
-| [container-use環境構築](./container-use-guide.md) | 環境作成・管理 | 基本フロー、サービス統合 |
-| [container-useエージェントルール](../instructions/container-use.md) | 障害復旧、Docker障害時フォールバック | セッション復旧プロトコル、Docker障害時フォールバック |
-| [設計書同期ポリシー](../instructions/design-sync.md) | 設計書と実装の同期 | 設計書更新手順、差分ドキュメント化 |
-| [テスト戦略](../instructions/testing-strategy.md) | Regression Test追加、Mock実装 | 環境依存コードのテスト方針 |
-| [Oracle利用ガイド](../README.md#oracle使用方法) | LLM判定の実装 | background_task経由のLLM呼び出し |
-| [PRテンプレート](../command/implement-issues.md#pr作成) | バグ修正PR作成時 | PRテンプレート、Closes #XX 構文 |
+| スキル/ドキュメント | 参照タイミング |
+|-------------------|---------------|
+| {{skill:container-use-guide}} | 環境作成・管理 |
+| {{skill:ci-workflow}} | PR作成後のCI監視 |
+| {{skill:tdd-implementation}} | テスト追加時 |
+| [プラットフォーム例外](../instructions/platform-exception.md) | 固有コードの修正時 |
+| [設計書同期ポリシー](../instructions/design-sync.md) | 設計書更新時 |
+| [テスト戦略](../instructions/testing-strategy.md) | Regression Test追加時 |
 
 ---
 

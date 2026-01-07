@@ -68,54 +68,9 @@ container-useは、Dockerコンテナ内で開発・テストを行うための�
 
 ## 🍎 プラットフォーム固有コードの制約
 
-container-use環境はLinuxコンテナのため、以下のコードは**コンテナ内でビルド/テスト不可**です。
+container-use環境はLinuxコンテナのため、macOS/Windows固有APIはコンテナ内でビルド/テスト不可です。
 
-### 対象となるコード
-
-| プラットフォーム | 例 | 制約 |
-|-----------------|-----|------|
-| macOS | `objc2`, `cocoa`, `core-foundation` | macOSでのみビルド可能 |
-| Windows | `windows-rs`, `winapi` | Windowsでのみビルド可能 |
-| iOS/Android | Swift, Kotlin | 専用SDKが必要 |
-
-### 対応方針
-
-```
-┌────────────────────────────────────────────────────────────┐
-│ プラットフォーム固有コードを含むIssue                         │
-└────────────────────────────────────────────────────────────┘
-                         │
-         ┌───────────────┴───────────────┐
-         ▼                               ▼
-┌─────────────────────┐       ┌─────────────────────┐
-│ クロスプラットフォーム │       │ プラットフォーム固有   │
-│ ロジック部分          │       │ API呼び出し部分       │
-│                     │       │                     │
-│ → container-use環境 │       │ → ホスト環境で作業    │
-│ （テスト可能）        │       │ → CI環境で最終検証    │
-└─────────────────────┘       └─────────────────────┘
-```
-
-### 例: macOS通知システム（objc2）
-
-```rust
-// src/notification/mod.rs
-#[cfg(target_os = "macos")]
-mod center;      // ← macOS専用、container-useでビルド不可
-
-#[cfg(target_os = "macos")]  
-mod delegate;    // ← macOS専用、container-useでビルド不可
-
-mod error;       // ← クロスプラットフォーム、container-useでテスト可能
-```
-
-**作業フロー**:
-1. クロスプラットフォーム部分 → container-use環境で実装・テスト
-2. プラットフォーム固有部分 → ホスト環境で実装
-3. GitHub Actions（macOS runner）で最終検証
-4. CI通過後にPRマージ
-
-詳細ルールは [implement-issues.md](../command/implement-issues.md) の「プラットフォーム固有コード」セクションを参照。
+> **詳細**: [プラットフォーム例外ポリシー](../instructions/platform-exception.md) を参照
 
 ---
 
