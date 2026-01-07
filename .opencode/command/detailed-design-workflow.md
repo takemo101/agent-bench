@@ -1,4 +1,4 @@
-# 詳細設計・完全ワークフロー (v2.7)
+# 詳細設計・完全ワークフロー (v2.8)
 
 基本設計書を入力として、詳細設計書を作成し、モックアップ生成とテスト設計までを一貫して行うワークフロー。
 
@@ -112,6 +112,9 @@ flowchart TB
 ```
 
 ---
+
+**変更点(v2.8)**:
+- **Sub-issue登録をGraphQL APIに変更**: REST APIのバグ（HTTP 500/404）を回避するため、GraphQL APIを使用するように修正。
 
 **変更点(v2.7)**:
 - **Sub-issue連携の自動化**: Epic Issueと子Issueを作成後、GitHub Sub-issues機能を使って親子関係を自動設定（decompose-issueと同等機能）。
@@ -1075,14 +1078,30 @@ def create_issues_with_optimal_granularity(design_doc):
     # 5. Epic Issueに子Issue一覧を追加
     update_epic_with_children(epic_issue, created_issues)
     
-    # 6. 子IssueをSub-issueとしてEpicに登録 (v2.7 NEW)
-    # Note: Sub-issues機能が有効なリポジトリでのみ動作
+    # 6. 子IssueをSub-issueとしてEpicに登録 (v2.7 NEW → v2.8 GraphQL API使用)
+    # Note: REST APIにはバグがあるため、GraphQL APIを使用
+    # Reference: https://github.com/cli/cli/issues/10378
     for child in created_issues:
         try:
-            # 1. 作成したIssueのDatabase IDを取得
-            child_db_id = bash(f"gh api '/repos/{{owner}}/{{repo}}/issues/{child.number}' --jq .id")
-            # 2. Epic IssueのSub-issueとして追加
-            bash(f"gh api --method POST '/repos/{{owner}}/{{repo}}/issues/{epic_issue.number}/sub_issues' -F sub_issue_id={child_db_id} || true")
+            # 1. EpicとChildのGraphQL Node IDを取得
+            epic_node_id = bash(f"gh issue view {epic_issue.number} --json id --jq '.id'").stdout.strip()
+            child_node_id = bash(f"gh issue view {child.number} --json id --jq '.id'").stdout.strip()
+            
+            if epic_node_id and child_node_id:
+                # 2. GraphQL APIでSub-issue関係を追加
+                bash(f'''
+                    gh api graphql \
+                      -H "GraphQL-Features: sub_issues" \
+                      -f 'query=mutation {{
+                        addSubIssue(input: {{
+                          issueId: "{epic_node_id}",
+                          subIssueId: "{child_node_id}"
+                        }}) {{
+                          issue {{ number }}
+                          subIssue {{ number }}
+                        }}
+                      }}' || true
+                ''')
         except:
             pass # Sub-issue登録失敗は致命的エラーとしない
     
