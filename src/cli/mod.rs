@@ -1,4 +1,5 @@
 //! CLI module for pomodoro timer command-line interface
+pub mod animation;
 pub mod commands;
 pub mod completions;
 pub mod display;
