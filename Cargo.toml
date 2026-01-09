@@ -28,6 +28,7 @@ image = "0.24"
 plist = "1.6"
 dirs = "5.0"
 indicatif = "0.18.3"
+terminal_size = "0.4.3"
 
 # macOS-specific dependencies for native notification system
 [target.'cfg(target_os = "macos")'.dependencies]
