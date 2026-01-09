@@ -20,6 +20,7 @@ chrono = { version = "0.4", features = ["serde"] }
 tracing = "0.1"
 tracing-subscriber = "0.3"
 colored = "3.0"
+unicode-width = "0.2"
 rodio = { version = "0.20", default-features = false, features = ["symphonia-all", "symphonia-aiff"] }
 async-trait = "0.1"
 tray-icon = "0.19"
