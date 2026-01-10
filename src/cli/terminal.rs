@@ -1,16 +1,27 @@
+//! ターミナル制御モジュール
+//!
+//! ANSIエスケープシーケンスを使用してターミナル出力を制御する。
+
 use crate::cli::layout::DisplayLayout;
 use std::fmt;
 use std::io::{self, Write};
 use terminal_size::{terminal_size, Height, Width};
 
+/// ANSIエスケープシーケンス
 #[derive(Debug, PartialEq)]
 pub enum AnsiSequence {
-    SaveCursor,    // \x1b[s
-    RestoreCursor, // \x1b[u
-    HideCursor,    // \x1b[?25l
-    ShowCursor,    // \x1b[?25h
-    MoveUp(u16),   // \x1b[nA
-    ClearLine,     // \x1b[2K
+    /// カーソル位置を保存
+    SaveCursor,
+    /// カーソル位置を復元
+    RestoreCursor,
+    /// カーソルを非表示
+    HideCursor,
+    /// カーソルを表示
+    ShowCursor,
+    /// カーソルを上に移動
+    MoveUp(u16),
+    /// 行をクリア
+    ClearLine,
 }
 
 impl fmt::Display for AnsiSequence {
@@ -26,12 +37,14 @@ impl fmt::Display for AnsiSequence {
     }
 }
 
+/// ターミナル出力バッファ
 pub struct TerminalBuffer {
     buffer: String,
     writer: Box<dyn Write + Send>,
 }
 
 impl TerminalBuffer {
+    /// 新しいバッファを作成（stdout使用）
     pub fn new() -> Self {
         Self {
             buffer: String::with_capacity(4096),
@@ -39,6 +52,7 @@ impl TerminalBuffer {
         }
     }
 
+    /// カスタムライターでバッファを作成
     pub fn with_writer(writer: Box<dyn Write + Send>) -> Self {
         Self {
             buffer: String::with_capacity(4096),
@@ -46,11 +60,13 @@ impl TerminalBuffer {
         }
     }
 
+    /// バッファにデータを追加
     pub fn queue<D: fmt::Display>(&mut self, d: D) {
         use std::fmt::Write;
         let _ = write!(self.buffer, "{}", d);
     }
 
+    /// バッファをフラッシュ
     pub fn flush(&mut self) -> io::Result<()> {
         self.writer.write_all(self.buffer.as_bytes())?;
         self.writer.flush()?;
@@ -65,6 +81,7 @@ impl Default for TerminalBuffer {
     }
 }
 
+/// ターミナルコントローラー
 pub struct TerminalController {
     buffer: TerminalBuffer,
     #[allow(dead_code)]
@@ -75,6 +92,7 @@ pub struct TerminalController {
 }
 
 impl TerminalController {
+    /// 新しいコントローラーを作成
     pub fn new() -> Self {
         let (w, h) = if let Some((Width(w), Height(h))) = terminal_size() {
             (w, h)
@@ -90,6 +108,7 @@ impl TerminalController {
         }
     }
 
+    /// カスタムライターでコントローラーを作成（テスト用）
     #[cfg(test)]
     pub fn with_writer(writer: Box<dyn Write + Send>) -> Self {
         Self {
@@ -100,6 +119,7 @@ impl TerminalController {
         }
     }
 
+    /// レイアウトをレンダリング
     pub fn render(&mut self, layout: &DisplayLayout) -> io::Result<()> {
         self.buffer.queue(AnsiSequence::SaveCursor);
         self.buffer.queue(AnsiSequence::HideCursor);
@@ -110,7 +130,7 @@ impl TerminalController {
         }
 
         let mut line_count = 0;
-        for line in &layout.lines {
+        for line in layout.lines() {
             self.buffer.queue(AnsiSequence::ClearLine);
             self.buffer.queue(line);
             self.buffer.queue("\n");
@@ -125,6 +145,7 @@ impl TerminalController {
         self.buffer.flush()
     }
 
+    /// 表示をクリア
     pub fn clear(&mut self) -> io::Result<()> {
         if self.last_line_count > 0 {
             self.buffer
@@ -216,9 +237,7 @@ mod tests {
         let writer = MockWriter::new();
         let mut controller = TerminalController::with_writer(Box::new(writer.clone()));
 
-        let mut layout = DisplayLayout::new();
-        layout.lines.push("Line 1".to_string());
-        layout.lines.push("Line 2".to_string());
+        let layout = DisplayLayout::new("Line 1".to_string(), "Line 2".to_string(), None);
 
         controller.render(&layout).unwrap();
 
@@ -233,22 +252,63 @@ mod tests {
     }
 
     #[test]
+    fn test_controller_render_with_task() {
+        let writer = MockWriter::new();
+        let mut controller = TerminalController::with_writer(Box::new(writer.clone()));
+
+        let layout = DisplayLayout::new(
+            "Line 1".to_string(),
+            "Line 2".to_string(),
+            Some("Task line".to_string()),
+        );
+
+        controller.render(&layout).unwrap();
+
+        let content = writer.get_content();
+        assert!(content.contains("Line 1\n"));
+        assert!(content.contains("Line 2\n"));
+        assert!(content.contains("Task line\n"));
+    }
+
+    #[test]
     fn test_controller_render_update() {
         let writer = MockWriter::new();
         let mut controller = TerminalController::with_writer(Box::new(writer.clone()));
 
-        let mut layout = DisplayLayout::new();
-        layout.lines.push("Line 1".to_string());
+        let layout = DisplayLayout::new("Line 1".to_string(), "Line 2".to_string(), None);
         controller.render(&layout).unwrap();
 
         writer.data.lock().unwrap().clear();
 
-        layout.lines.push("Line 2".to_string());
-        controller.render(&layout).unwrap();
+        let layout2 = DisplayLayout::new(
+            "Line 1 updated".to_string(),
+            "Line 2 updated".to_string(),
+            Some("New task".to_string()),
+        );
+        controller.render(&layout2).unwrap();
 
         let content = writer.get_content();
-        assert!(content.contains("\x1b[1A"));
-        assert!(content.contains("Line 1\n"));
-        assert!(content.contains("Line 2\n"));
+        assert!(content.contains("\x1b[2A")); // MoveUp(2) for previous 2 lines
+        assert!(content.contains("Line 1 updated\n"));
+        assert!(content.contains("Line 2 updated\n"));
+        assert!(content.contains("New task\n"));
+    }
+
+    #[test]
+    fn test_controller_clear() {
+        let writer = MockWriter::new();
+        let mut controller = TerminalController::with_writer(Box::new(writer.clone()));
+
+        let layout = DisplayLayout::new("Line 1".to_string(), "Line 2".to_string(), None);
+        controller.render(&layout).unwrap();
+
+        writer.data.lock().unwrap().clear();
+
+        controller.clear().unwrap();
+
+        let content = writer.get_content();
+        assert!(content.contains("\x1b[2A")); // MoveUp to previous position
+                                              // Should contain ClearLine sequences
+        assert!(content.matches("\x1b[2K").count() >= 2);
     }
 }
