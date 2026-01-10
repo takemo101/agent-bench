@@ -63,10 +63,12 @@ impl PhaseAnimation {
     /// 休憩中アニメーション
     pub fn short_break() -> Self {
         let frames = vec![
-            AnimationFrame::new("🧘 ～～～ ゆっくり休憩中 ～～～"),
+            AnimationFrame::new("🧘～～～  ゆっくり休憩中  ～～～"),
+            AnimationFrame::new("🧘 ～～～ ゆっくり休憩中  ～～～"),
+            AnimationFrame::new("🧘  ～～～ゆっくり休憩中  ～～～"),
             AnimationFrame::new("🧘  ～～～ ゆっくり休憩中 ～～～"),
-            AnimationFrame::new("🧘 ～～～  ゆっくり休憩中 ～～～"),
-            AnimationFrame::new("🧘  ～～～ ゆっくり休憩中  ～～～"),
+            AnimationFrame::new("🧘  ～～～ゆっくり休憩中  ～～～"),
+            AnimationFrame::new("🧘 ～～～ ゆっくり休憩中  ～～～"),
         ];
         Self {
             phase: TimerPhase::Breaking,
@@ -186,7 +188,7 @@ mod tests {
 
         let br = PhaseAnimation::short_break();
         assert_eq!(br.phase, TimerPhase::Breaking);
-        assert_eq!(br.frames.len(), 4);
+        assert_eq!(br.frames.len(), 6);
 
         let lbr = PhaseAnimation::long_break();
         assert_eq!(lbr.phase, TimerPhase::LongBreaking);
