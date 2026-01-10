@@ -60,15 +60,15 @@ impl PhaseAnimation {
         }
     }
 
-    /// 休憩中アニメーション
+    /// 休憩中アニメーション（左右対称の呼吸）
     pub fn short_break() -> Self {
         let frames = vec![
-            AnimationFrame::new("🧘～～～  ゆっくり休憩中  ～～～"),
-            AnimationFrame::new("🧘 ～～～ ゆっくり休憩中  ～～～"),
-            AnimationFrame::new("🧘  ～～～ゆっくり休憩中  ～～～"),
-            AnimationFrame::new("🧘  ～～～ ゆっくり休憩中 ～～～"),
-            AnimationFrame::new("🧘  ～～～ゆっくり休憩中  ～～～"),
-            AnimationFrame::new("🧘 ～～～ ゆっくり休憩中  ～～～"),
+            AnimationFrame::new("🧘～～～    ゆっくり休憩中    ～～～"),
+            AnimationFrame::new("🧘 ～～～   ゆっくり休憩中   ～～～ "),
+            AnimationFrame::new("🧘  ～～～  ゆっくり休憩中  ～～～  "),
+            AnimationFrame::new("🧘   ～～～ ゆっくり休憩中 ～～～   "),
+            AnimationFrame::new("🧘  ～～～  ゆっくり休憩中  ～～～  "),
+            AnimationFrame::new("🧘 ～～～   ゆっくり休憩中   ～～～ "),
         ];
         Self {
             phase: TimerPhase::Breaking,
