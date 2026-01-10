@@ -22,14 +22,7 @@ fn test_time_display_layout_integration() {
     let renderer = LayoutRenderer::new(80);
     let time_display = TimeDisplay::new(323, 1500);
 
-    let layout = renderer.build_layout(
-        TimerPhase::Working,
-        &time_display,
-        None,
-        None,
-        323,
-        1500,
-    );
+    let layout = renderer.build_layout(TimerPhase::Working, &time_display, None, None, 323, 1500);
 
     // line1 should contain the formatted time
     assert!(layout.line1.contains("05:23"));
@@ -44,14 +37,7 @@ fn test_percentage_in_layout() {
 
     // 50% progress
     let time_display = TimeDisplay::new(750, 1500);
-    let layout = renderer.build_layout(
-        TimerPhase::Working,
-        &time_display,
-        None,
-        None,
-        750,
-        1500,
-    );
+    let layout = renderer.build_layout(TimerPhase::Working, &time_display, None, None, 750, 1500);
 
     assert!(layout.line1.contains("50%"));
 }
@@ -365,8 +351,7 @@ fn test_zero_duration() {
     let renderer = LayoutRenderer::new(80);
     let time_display = TimeDisplay::new(0, 0);
 
-    let layout =
-        renderer.build_layout(TimerPhase::Stopped, &time_display, None, None, 0, 0);
+    let layout = renderer.build_layout(TimerPhase::Stopped, &time_display, None, None, 0, 0);
 
     // Should not panic and produce valid layout
     assert!(!layout.line1.is_empty());
@@ -378,8 +363,7 @@ fn test_overtime() {
     let renderer = LayoutRenderer::new(80);
     let time_display = TimeDisplay::new(1600, 1500);
 
-    let layout =
-        renderer.build_layout(TimerPhase::Working, &time_display, None, None, 1600, 1500);
+    let layout = renderer.build_layout(TimerPhase::Working, &time_display, None, None, 1600, 1500);
 
     // Should handle gracefully
     assert!(layout.line1.contains("100%"));
