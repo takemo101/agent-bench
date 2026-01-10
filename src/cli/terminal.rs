@@ -234,7 +234,6 @@ mod tests {
         controller.render(&layout).unwrap();
         
         // 2回目の描画
-        let writer2 = MockWriter::new(); // 新しいWriterにして出力を分離したいが、controllerは所有している
         // なので、同じWriterに追記されることを確認するか、あるいはMockWriterの中身をクリアする機能をつけるか。
         // MockWriterは共有されているので、dataをクリアすればいい。
         writer.data.lock().unwrap().clear();
