@@ -70,7 +70,9 @@ impl EnhancedDisplayState {
 
         // Get animation frame
         let frame_content = self.animation_engine.get_current_frame(phase);
-        let frame = frame_content.as_ref().map(|c| AnimationFrame::new(c.as_str()));
+        let frame = frame_content
+            .as_ref()
+            .map(|c| AnimationFrame::new(c.as_str()));
 
         // Build time display
         let time_display = TimeDisplay::new(elapsed, total);
