@@ -5,7 +5,7 @@
 //! for enhanced visual feedback.
 
 use crate::cli::animation::{AnimationEngine, AnimationFrame};
-use crate::cli::layout::{DisplayLayout, LayoutRenderer};
+use crate::cli::layout::LayoutRenderer;
 use crate::cli::terminal::TerminalController;
 use crate::cli::time_format::TimeDisplay;
 use crate::types::{IpcResponse, TimerPhase};
