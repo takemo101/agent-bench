@@ -63,12 +63,12 @@ async fn main() -> Result<()> {
             }
         },
         Commands::Status => {
-            let mut bar = None;
+            let mut state = EnhancedDisplayState::new();
             loop {
                 match client.status().await {
                     Ok(response) => {
                         if response.status == "success" {
-                            if !display.update_status(response, &mut bar) {
+                            if !display.update_status_enhanced(response, &mut state) {
                                 break;
                             }
                         } else {
@@ -81,7 +81,7 @@ async fn main() -> Result<()> {
                         break;
                     }
                 }
-                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                tokio::time::sleep(std::time::Duration::from_millis(200)).await;
             }
         }
         Commands::Install => match pomodoro::launchagent::install() {
