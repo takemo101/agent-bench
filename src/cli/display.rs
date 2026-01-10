@@ -1,17 +1,112 @@
 //! Display utilities for CLI output
 //!
 //! Provides colored and formatted output for CLI commands.
+//! Integrates TimeDisplay, AnimationEngine, LayoutRenderer, and TerminalController
+//! for enhanced visual feedback.
 
+use crate::cli::animation::{AnimationEngine, AnimationFrame};
+use crate::cli::layout::LayoutRenderer;
+use crate::cli::terminal::TerminalController;
+use crate::cli::time_format::TimeDisplay;
 use crate::types::{IpcResponse, TimerPhase};
 use colored::Colorize;
 use indicatif::{ProgressBar, ProgressStyle};
 use std::str::FromStr;
 
 /// Display handler for CLI output
+///
+/// Provides two display modes:
+/// - Legacy mode: Uses indicatif ProgressBar (for backward compatibility)
+/// - Enhanced mode: Uses LayoutRenderer + TerminalController for flicker-free animated display
 pub struct Display;
 
+/// Enhanced display state for animated updates
+pub struct EnhancedDisplayState {
+    /// Layout renderer for building 3-line display
+    pub layout_renderer: LayoutRenderer,
+    /// Terminal controller for flicker-free updates
+    pub terminal_controller: TerminalController,
+    /// Animation engine for phase-specific animations
+    pub animation_engine: AnimationEngine,
+    /// Current phase (for detecting phase changes)
+    pub current_phase: Option<TimerPhase>,
+}
+
+impl EnhancedDisplayState {
+    /// Create new enhanced display state
+    pub fn new() -> Self {
+        Self {
+            layout_renderer: LayoutRenderer::default(),
+            terminal_controller: TerminalController::default(),
+            animation_engine: AnimationEngine::new(),
+            current_phase: None,
+        }
+    }
+
+    /// Update the display with new timer data
+    ///
+    /// Returns `true` if the loop should continue, `false` if it should stop
+    pub fn update(
+        &mut self,
+        phase: TimerPhase,
+        elapsed: u64,
+        total: u64,
+        task_name: Option<&str>,
+    ) -> std::io::Result<bool> {
+        // Stop if timer is stopped
+        if phase == TimerPhase::Stopped {
+            self.terminal_controller.clear()?;
+            return Ok(false);
+        }
+
+        // Reset animation on phase change
+        if self.current_phase != Some(phase) {
+            self.animation_engine.reset();
+            self.current_phase = Some(phase);
+        }
+
+        // Tick animation
+        self.animation_engine.tick();
+
+        // Get animation frame
+        let frame_content = self.animation_engine.get_current_frame(phase);
+        let frame = frame_content
+            .as_ref()
+            .map(|c| AnimationFrame::new(c.as_str()));
+
+        // Build time display
+        let time_display = TimeDisplay::new(elapsed, total);
+
+        // Build layout
+        let layout = self.layout_renderer.build_layout(
+            phase,
+            &time_display,
+            frame.as_ref(),
+            task_name,
+            elapsed,
+            total,
+        );
+
+        // Render to terminal
+        self.terminal_controller.render(&layout)?;
+
+        Ok(true)
+    }
+
+    /// Clear the display
+    pub fn clear(&mut self) -> std::io::Result<()> {
+        self.terminal_controller.clear()
+    }
+}
+
+impl Default for EnhancedDisplayState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Display {
-    // Helper to create styled progress bar
+    // Helper to create styled progress bar (legacy mode)
     fn create_progress_bar(
         &self,
         phase: TimerPhase,
@@ -52,6 +147,7 @@ impl Display {
 
         bar
     }
+
     /// Create a new Display instance
     pub fn new() -> Self {
         Self
@@ -87,7 +183,7 @@ impl Display {
         println!("{} {}", "■".red().bold(), response.message.red());
     }
 
-    /// Show status information
+    /// Show status information (one-shot display using new layout)
     pub fn show_status(&self, response: IpcResponse) {
         if let Some(data) = response.data {
             println!("{}", "=== タイマー状態 ===".bold());
@@ -100,13 +196,26 @@ impl Display {
 
             // インジケーター表示（durationがある場合のみ）
             if let (Some(remaining), Some(duration)) = (data.remaining_seconds, data.duration) {
-                let bar = self.create_progress_bar(
+                let elapsed = (duration as u64).saturating_sub(remaining as u64);
+                let total = duration as u64;
+
+                // Use new LayoutRenderer for display
+                let renderer = LayoutRenderer::default();
+                let time_display = TimeDisplay::new(elapsed, total);
+
+                let layout = renderer.build_layout(
                     phase,
-                    duration as u64,
-                    remaining as u64,
+                    &time_display,
+                    None, // No animation for one-shot display
                     data.task_name.as_deref(),
+                    elapsed,
+                    total,
                 );
-                bar.finish();
+
+                // Print layout lines
+                for line in layout.lines() {
+                    println!("{}", line);
+                }
             } else {
                 // 従来のテキスト表示（後方互換性のため）
                 let state_display = match phase {
@@ -181,7 +290,7 @@ impl Display {
         eprintln!("  {}", msg);
     }
 
-    /// Update status information in a loop
+    /// Update status information in a loop (legacy mode using indicatif)
     /// Returns true if the loop should continue, false if it should stop
     pub fn update_status(&self, response: IpcResponse, bar: &mut Option<ProgressBar>) -> bool {
         if let Some(data) = response.data {
@@ -242,6 +351,46 @@ impl Display {
             true
         } else {
             // データなし
+            println!("{}", response.message);
+            false
+        }
+    }
+
+    /// Update status using enhanced display (with animation)
+    ///
+    /// This method uses the new LayoutRenderer + TerminalController for
+    /// flicker-free animated display. Call this in a loop with 200ms intervals.
+    ///
+    /// Returns `true` if the loop should continue, `false` if it should stop
+    pub fn update_status_enhanced(
+        &self,
+        response: IpcResponse,
+        state: &mut EnhancedDisplayState,
+    ) -> bool {
+        if let Some(data) = response.data {
+            let phase = data
+                .state
+                .as_deref()
+                .and_then(|s| TimerPhase::from_str(s).ok())
+                .unwrap_or(TimerPhase::Stopped);
+
+            if let (Some(remaining), Some(duration)) = (data.remaining_seconds, data.duration) {
+                let elapsed = (duration as u64).saturating_sub(remaining as u64);
+                let total = duration as u64;
+
+                match state.update(phase, elapsed, total, data.task_name.as_deref()) {
+                    Ok(should_continue) => should_continue,
+                    Err(_) => {
+                        // Fall back to simple text on terminal error
+                        println!("状態: {:?}", phase);
+                        false
+                    }
+                }
+            } else {
+                println!("{}", response.message);
+                false
+            }
+        } else {
             println!("{}", response.message);
             false
         }
@@ -384,5 +533,87 @@ mod tests {
         let display = Display::new();
         // This should not panic
         display.show_uninstall_failure("Test error");
+    }
+
+    // ========================================================================
+    // Enhanced Display Tests
+    // ========================================================================
+
+    #[test]
+    fn test_enhanced_display_state_new() {
+        let state = EnhancedDisplayState::new();
+        assert!(state.current_phase.is_none());
+    }
+
+    #[test]
+    fn test_enhanced_display_state_default() {
+        let state = EnhancedDisplayState::default();
+        assert!(state.current_phase.is_none());
+    }
+
+    #[test]
+    fn test_update_status_enhanced_stopped() {
+        let display = Display::new();
+        let mut state = EnhancedDisplayState::new();
+
+        let response = IpcResponse::success(
+            "Timer stopped",
+            Some(ResponseData {
+                state: Some("stopped".to_string()),
+                remaining_seconds: Some(0),
+                pomodoro_count: None,
+                task_name: None,
+                duration: Some(1500),
+            }),
+        );
+
+        let should_continue = display.update_status_enhanced(response, &mut state);
+        assert!(!should_continue);
+    }
+
+    #[test]
+    fn test_update_status_enhanced_no_data() {
+        let display = Display::new();
+        let mut state = EnhancedDisplayState::new();
+
+        let response = IpcResponse::success("No timer running", None);
+
+        let should_continue = display.update_status_enhanced(response, &mut state);
+        assert!(!should_continue);
+    }
+
+    #[test]
+    fn test_show_status_with_layout_renderer() {
+        let display = Display::new();
+        // Test that show_status uses LayoutRenderer when duration is available
+        let response = IpcResponse::success(
+            "Status",
+            Some(ResponseData {
+                state: Some("working".to_string()),
+                remaining_seconds: Some(1200),
+                pomodoro_count: Some(1),
+                task_name: Some("コーディング".to_string()),
+                duration: Some(1500),
+            }),
+        );
+        // Should not panic and should use new layout
+        display.show_status(response);
+    }
+
+    #[test]
+    fn test_show_status_fallback_no_duration() {
+        let display = Display::new();
+        // Test fallback when no duration
+        let response = IpcResponse::success(
+            "Status",
+            Some(ResponseData {
+                state: Some("working".to_string()),
+                remaining_seconds: Some(1200),
+                pomodoro_count: Some(1),
+                task_name: Some("タスク".to_string()),
+                duration: None, // No duration - should use legacy display
+            }),
+        );
+        display.show_status(response);
     }
 }
