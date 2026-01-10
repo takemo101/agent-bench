@@ -5,7 +5,9 @@
 
 use anyhow::Result;
 use clap::Parser;
-use pomodoro::cli::{generate_completions, Cli, Commands, Display, EnhancedDisplayState, IpcClient};
+use pomodoro::cli::{
+    generate_completions, Cli, Commands, Display, EnhancedDisplayState, IpcClient,
+};
 
 #[tokio::main]
 async fn main() -> Result<()> {
