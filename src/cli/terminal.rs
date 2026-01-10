@@ -45,8 +45,18 @@ impl TerminalBuffer {
             writer,
         }
     }
-    
-    // ...
+
+    pub fn queue<D: fmt::Display>(&mut self, d: D) {
+        use std::fmt::Write;
+        let _ = write!(self.buffer, "{}", d);
+    }
+
+    pub fn flush(&mut self) -> io::Result<()> {
+        self.writer.write_all(self.buffer.as_bytes())?;
+        self.writer.flush()?;
+        self.buffer.clear();
+        Ok(())
+    }
 }
 
 impl Default for TerminalBuffer {
@@ -56,7 +66,12 @@ impl Default for TerminalBuffer {
 }
 
 pub struct TerminalController {
-// ...
+    buffer: TerminalBuffer,
+    #[allow(dead_code)]
+    width: u16,
+    #[allow(dead_code)]
+    height: u16,
+    last_line_count: u16,
 }
 
 impl TerminalController {
@@ -74,7 +89,8 @@ impl TerminalController {
             last_line_count: 0,
         }
     }
-
+    
+    #[cfg(test)]
     pub fn with_writer(writer: Box<dyn Write + Send>) -> Self {
         Self {
             buffer: TerminalBuffer::with_writer(writer),
@@ -83,13 +99,6 @@ impl TerminalController {
             last_line_count: 0,
         }
     }
-}
-
-impl Default for TerminalController {
-    fn default() -> Self {
-        Self::new()
-    }
-}
 
     pub fn render(&mut self, layout: &DisplayLayout) -> io::Result<()> {
         self.buffer.queue(AnsiSequence::SaveCursor);
@@ -122,16 +131,16 @@ impl Default for TerminalController {
                 self.buffer.queue(AnsiSequence::ClearLine);
                 self.buffer.queue("\n");
             }
-            // MoveUp to restore position roughly? No, just clear buffer state
-            // If we printed newlines, the cursor moved down.
-            // We need to move back up to the starting position if we want to "clear" the area completely
-            // and leave the cursor where it started.
-            // But if we just want to wipe the text, \n moves down.
-            // To restore cursor to original position:
             self.buffer.queue(AnsiSequence::MoveUp(self.last_line_count));
         }
         self.last_line_count = 0;
         self.buffer.flush()
+    }
+}
+
+impl Default for TerminalController {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -211,10 +220,9 @@ mod tests {
         controller.render(&layout).unwrap();
         
         let content = writer.get_content();
-        // 初回描画: Save -> Hide -> (No MoveUp) -> ClearLine -> Line1 -> \n -> ClearLine -> Line2 -> \n -> Restore -> Show
         assert!(content.contains("\x1b[s"));
         assert!(content.contains("\x1b[?25l"));
-        assert!(!content.contains("\x1b[A")); // 初回なのでMoveUpなし
+        assert!(!content.contains("\x1b[A"));
         assert!(content.contains("Line 1\n"));
         assert!(content.contains("Line 2\n"));
         assert!(content.contains("\x1b[u"));
@@ -230,17 +238,13 @@ mod tests {
         layout.lines.push("Line 1".to_string());
         controller.render(&layout).unwrap();
         
-        // 2回目の描画
-        // なので、同じWriterに追記されることを確認するか、あるいはMockWriterの中身をクリアする機能をつけるか。
-        // MockWriterは共有されているので、dataをクリアすればいい。
         writer.data.lock().unwrap().clear();
         
         layout.lines.push("Line 2".to_string());
         controller.render(&layout).unwrap();
         
         let content = writer.get_content();
-        // 2回目: Save -> Hide -> MoveUp(1) -> ...
-        assert!(content.contains("\x1b[1A")); // 前回が1行だったので1行戻る
+        assert!(content.contains("\x1b[1A"));
         assert!(content.contains("Line 1\n"));
         assert!(content.contains("Line 2\n"));
     }
