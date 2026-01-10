@@ -234,11 +234,7 @@ mod tests {
 
     #[test]
     fn test_display_layout_lines_with_task() {
-        let layout = DisplayLayout::new(
-            "a".to_string(),
-            "b".to_string(),
-            Some("c".to_string()),
-        );
+        let layout = DisplayLayout::new("a".to_string(), "b".to_string(), Some("c".to_string()));
         let lines = layout.lines();
         assert_eq!(lines, vec!["a", "b", "c"]);
     }
@@ -342,14 +338,7 @@ mod tests {
         let renderer = LayoutRenderer::new(80);
         let time_display = TimeDisplay::new(0, 1500);
 
-        let layout = renderer.build_layout(
-            TimerPhase::Working,
-            &time_display,
-            None,
-            None,
-            0,
-            1500,
-        );
+        let layout = renderer.build_layout(TimerPhase::Working, &time_display, None, None, 0, 1500);
 
         assert!(layout.line1.contains("作業中"));
         assert_eq!(layout.line2, "");
@@ -362,14 +351,8 @@ mod tests {
         let renderer = LayoutRenderer::new(80);
         let time_display = TimeDisplay::new(60, 300);
 
-        let layout = renderer.build_layout(
-            TimerPhase::Breaking,
-            &time_display,
-            None,
-            None,
-            60,
-            300,
-        );
+        let layout =
+            renderer.build_layout(TimerPhase::Breaking, &time_display, None, None, 60, 300);
 
         assert!(layout.line1.contains("休憩中"));
     }
@@ -379,14 +362,8 @@ mod tests {
         let renderer = LayoutRenderer::new(80);
         let time_display = TimeDisplay::new(0, 900);
 
-        let layout = renderer.build_layout(
-            TimerPhase::LongBreaking,
-            &time_display,
-            None,
-            None,
-            0,
-            900,
-        );
+        let layout =
+            renderer.build_layout(TimerPhase::LongBreaking, &time_display, None, None, 0, 900);
 
         assert!(layout.line1.contains("長期休憩中"));
     }
@@ -396,14 +373,8 @@ mod tests {
         let renderer = LayoutRenderer::new(80);
         let time_display = TimeDisplay::new(500, 1500);
 
-        let layout = renderer.build_layout(
-            TimerPhase::Paused,
-            &time_display,
-            None,
-            None,
-            500,
-            1500,
-        );
+        let layout =
+            renderer.build_layout(TimerPhase::Paused, &time_display, None, None, 500, 1500);
 
         assert!(layout.line1.contains("一時停止"));
     }
@@ -413,14 +384,7 @@ mod tests {
         let renderer = LayoutRenderer::new(80);
         let time_display = TimeDisplay::new(0, 0);
 
-        let layout = renderer.build_layout(
-            TimerPhase::Stopped,
-            &time_display,
-            None,
-            None,
-            0,
-            0,
-        );
+        let layout = renderer.build_layout(TimerPhase::Stopped, &time_display, None, None, 0, 0);
 
         assert!(layout.line1.contains("停止"));
     }

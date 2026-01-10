@@ -237,11 +237,7 @@ mod tests {
         let writer = MockWriter::new();
         let mut controller = TerminalController::with_writer(Box::new(writer.clone()));
 
-        let layout = DisplayLayout::new(
-            "Line 1".to_string(),
-            "Line 2".to_string(),
-            None,
-        );
+        let layout = DisplayLayout::new("Line 1".to_string(), "Line 2".to_string(), None);
 
         controller.render(&layout).unwrap();
 
@@ -279,11 +275,7 @@ mod tests {
         let writer = MockWriter::new();
         let mut controller = TerminalController::with_writer(Box::new(writer.clone()));
 
-        let layout = DisplayLayout::new(
-            "Line 1".to_string(),
-            "Line 2".to_string(),
-            None,
-        );
+        let layout = DisplayLayout::new("Line 1".to_string(), "Line 2".to_string(), None);
         controller.render(&layout).unwrap();
 
         writer.data.lock().unwrap().clear();
@@ -307,11 +299,7 @@ mod tests {
         let writer = MockWriter::new();
         let mut controller = TerminalController::with_writer(Box::new(writer.clone()));
 
-        let layout = DisplayLayout::new(
-            "Line 1".to_string(),
-            "Line 2".to_string(),
-            None,
-        );
+        let layout = DisplayLayout::new("Line 1".to_string(), "Line 2".to_string(), None);
         controller.render(&layout).unwrap();
 
         writer.data.lock().unwrap().clear();
@@ -320,7 +308,7 @@ mod tests {
 
         let content = writer.get_content();
         assert!(content.contains("\x1b[2A")); // MoveUp to previous position
-        // Should contain ClearLine sequences
+                                              // Should contain ClearLine sequences
         assert!(content.matches("\x1b[2K").count() >= 2);
     }
 }
