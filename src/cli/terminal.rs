@@ -1,16 +1,16 @@
+use crate::cli::layout::DisplayLayout;
 use std::fmt;
 use std::io::{self, Write};
-use crate::cli::layout::DisplayLayout;
-use terminal_size::{terminal_size, Width, Height};
+use terminal_size::{terminal_size, Height, Width};
 
 #[derive(Debug, PartialEq)]
 pub enum AnsiSequence {
-    SaveCursor,      // \x1b[s
-    RestoreCursor,   // \x1b[u
-    HideCursor,      // \x1b[?25l
-    ShowCursor,      // \x1b[?25h
-    MoveUp(u16),     // \x1b[nA
-    ClearLine,       // \x1b[2K
+    SaveCursor,    // \x1b[s
+    RestoreCursor, // \x1b[u
+    HideCursor,    // \x1b[?25l
+    ShowCursor,    // \x1b[?25h
+    MoveUp(u16),   // \x1b[nA
+    ClearLine,     // \x1b[2K
 }
 
 impl fmt::Display for AnsiSequence {
@@ -89,7 +89,7 @@ impl TerminalController {
             last_line_count: 0,
         }
     }
-    
+
     #[cfg(test)]
     pub fn with_writer(writer: Box<dyn Write + Send>) -> Self {
         Self {
@@ -105,7 +105,8 @@ impl TerminalController {
         self.buffer.queue(AnsiSequence::HideCursor);
 
         if self.last_line_count > 0 {
-            self.buffer.queue(AnsiSequence::MoveUp(self.last_line_count));
+            self.buffer
+                .queue(AnsiSequence::MoveUp(self.last_line_count));
         }
 
         let mut line_count = 0;
@@ -126,12 +127,14 @@ impl TerminalController {
 
     pub fn clear(&mut self) -> io::Result<()> {
         if self.last_line_count > 0 {
-            self.buffer.queue(AnsiSequence::MoveUp(self.last_line_count));
+            self.buffer
+                .queue(AnsiSequence::MoveUp(self.last_line_count));
             for _ in 0..self.last_line_count {
                 self.buffer.queue(AnsiSequence::ClearLine);
                 self.buffer.queue("\n");
             }
-            self.buffer.queue(AnsiSequence::MoveUp(self.last_line_count));
+            self.buffer
+                .queue(AnsiSequence::MoveUp(self.last_line_count));
         }
         self.last_line_count = 0;
         self.buffer.flush()
@@ -167,7 +170,7 @@ mod tests {
                 data: Arc::new(Mutex::new(Vec::new())),
             }
         }
-        
+
         fn get_content(&self) -> String {
             let data = self.data.lock().unwrap();
             String::from_utf8(data.clone()).unwrap()
@@ -198,13 +201,13 @@ mod tests {
     fn test_terminal_buffer() {
         let writer = MockWriter::new();
         let mut buffer = TerminalBuffer::with_writer(Box::new(writer.clone()));
-        
+
         buffer.queue("Hello");
         buffer.queue(" ");
         buffer.queue("World");
         buffer.queue(AnsiSequence::ClearLine);
         buffer.flush().unwrap();
-        
+
         assert_eq!(writer.get_content(), "Hello World\x1b[2K");
     }
 
@@ -212,13 +215,13 @@ mod tests {
     fn test_controller_render() {
         let writer = MockWriter::new();
         let mut controller = TerminalController::with_writer(Box::new(writer.clone()));
-        
+
         let mut layout = DisplayLayout::new();
         layout.lines.push("Line 1".to_string());
         layout.lines.push("Line 2".to_string());
-        
+
         controller.render(&layout).unwrap();
-        
+
         let content = writer.get_content();
         assert!(content.contains("\x1b[s"));
         assert!(content.contains("\x1b[?25l"));
@@ -233,16 +236,16 @@ mod tests {
     fn test_controller_render_update() {
         let writer = MockWriter::new();
         let mut controller = TerminalController::with_writer(Box::new(writer.clone()));
-        
+
         let mut layout = DisplayLayout::new();
         layout.lines.push("Line 1".to_string());
         controller.render(&layout).unwrap();
-        
+
         writer.data.lock().unwrap().clear();
-        
+
         layout.lines.push("Line 2".to_string());
         controller.render(&layout).unwrap();
-        
+
         let content = writer.get_content();
         assert!(content.contains("\x1b[1A"));
         assert!(content.contains("Line 1\n"));
