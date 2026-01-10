@@ -9,3 +9,9 @@ impl DisplayLayout {
         Self { lines: Vec::new() }
     }
 }
+
+impl Default for DisplayLayout {
+    fn default() -> Self {
+        Self::new()
+    }
+}
