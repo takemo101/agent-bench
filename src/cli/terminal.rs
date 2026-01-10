@@ -45,27 +45,18 @@ impl TerminalBuffer {
             writer,
         }
     }
+    
+    // ...
+}
 
-    pub fn queue<D: fmt::Display>(&mut self, d: D) {
-        use std::fmt::Write;
-        let _ = write!(self.buffer, "{}", d);
-    }
-
-    pub fn flush(&mut self) -> io::Result<()> {
-        self.writer.write_all(self.buffer.as_bytes())?;
-        self.writer.flush()?;
-        self.buffer.clear();
-        Ok(())
+impl Default for TerminalBuffer {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
 pub struct TerminalController {
-    buffer: TerminalBuffer,
-    #[allow(dead_code)]
-    width: u16,
-    #[allow(dead_code)]
-    height: u16,
-    last_line_count: u16,
+// ...
 }
 
 impl TerminalController {
@@ -83,8 +74,7 @@ impl TerminalController {
             last_line_count: 0,
         }
     }
-    
-    #[cfg(test)]
+
     pub fn with_writer(writer: Box<dyn Write + Send>) -> Self {
         Self {
             buffer: TerminalBuffer::with_writer(writer),
@@ -93,6 +83,13 @@ impl TerminalController {
             last_line_count: 0,
         }
     }
+}
+
+impl Default for TerminalController {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
     pub fn render(&mut self, layout: &DisplayLayout) -> io::Result<()> {
         self.buffer.queue(AnsiSequence::SaveCursor);
